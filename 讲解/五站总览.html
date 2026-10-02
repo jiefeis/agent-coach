@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Agent 搭建教练：五站总览</title>
+<style>
+:root{--bg:#f5f6f8;--card:#ffffff;--band:#eef1f5;--line:#c5ccd6;--text:#1d232b;--muted:#5b6573;--accent:#c62f4b;--you:#1f6feb;--ai:#8250df;--ok:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1120;--card:#111a2c;--band:#1a2539;--line:#3a4760;--text:#e7eaf0;--muted:#9aa5b8;--accent:#fb7185;--you:#6cb6ff;--ai:#c297ff;--ok:#57d27a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 "Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif}
+main{max-width:1440px;margin:0 auto;padding:20px 16px 12px}
+h1{font-size:24px;margin:0 0 2px}
+p{margin:0 0 14px;color:var(--muted)}
+svg{display:block;width:100%;height:auto;max-height:calc(100vh - 110px)}
+svg text{fill:var(--text);font-size:18px}
+.card{fill:var(--card);stroke:var(--line)}
+.band{fill:var(--band)}
+.check{fill:var(--card);stroke:var(--accent);stroke-dasharray:6 4}
+svg .no{fill:var(--accent);font-weight:700}
+svg .name{font-size:20px;font-weight:700}
+.k{font-weight:700}
+svg .k0{fill:var(--you)} svg .k1{fill:var(--ai)} svg .k2{fill:var(--ok)}
+svg .hint{fill:var(--muted);font-size:14px}
+.arrow{stroke:var(--muted);stroke-width:2;fill:none}
+.dash{stroke-dasharray:4 4}
+#m path{fill:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>Agent 搭建教练：五站总览</h1>
+<p>例子：每周价格周报。每站三句：你做什么，AI 做什么，你确认什么；你说了确认的话，AI 核对过，才进下一站。</p>
+<svg viewBox="-2 -2 1404 596" role="img" aria-label="五站总览：建项目、说清需求、排表画图、一步一票、收尾交接，每站你做、AI 做、你确认；下方是体检入口">
+<defs><marker id="m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z"/></marker></defs>
+<g id="s1">
+<rect class="card" x="0" y="0" width="256" height="424" rx="12"/>
+<rect class="band" x="0" y="0" width="256" height="64" rx="12"/>
+<rect class="band" x="0" y="40" width="256" height="24"/>
+<text class="no" x="18" y="27">第 1 站</text>
+<text class="name" x="18" y="52">建项目</text>
+<text class="say" x="18" y="100"><tspan x="18"><tspan class="k k0">你做</tspan>：说出想交给 AI 的</tspan><tspan x="18" dy="28">一件工作，比如"每周价格</tspan><tspan x="18" dy="28">周报"。</tspan></text>
+<text class="say" x="18" y="208"><tspan x="18"><tspan class="k k1">AI 做</tspan>：在你的项目文件夹</tspan><tspan x="18" dy="28">里建好规矩和进度记录。</tspan></text>
+<text class="say" x="18" y="316"><tspan x="18"><tspan class="k k2">你确认</tspan>：一份真实样例已放</tspan><tspan x="18" dy="28">进 materials\，说"项目</tspan><tspan x="18" dy="28">建好了"。</tspan></text>
+</g>
+<path class="arrow" d="M260 232 H280" marker-end="url(#m)"/>
+<g id="s2">
+<rect class="card" x="286" y="0" width="256" height="424" rx="12"/>
+<rect class="band" x="286" y="0" width="256" height="64" rx="12"/>
+<rect class="band" x="286" y="40" width="256" height="24"/>
+<text class="no" x="304" y="27">第 2 站</text>
+<text class="name" x="304" y="52">说清需求</text>
+<text class="say" x="304" y="100"><tspan x="304"><tspan class="k k0">你做</tspan>：拿最近一次周报举</tspan><tspan x="304" dy="28">例，一次回答一个问题。</tspan></text>
+<text class="say" x="304" y="180"><tspan x="304"><tspan class="k k1">AI 做</tspan>：把回答写成一页任</tspan><tspan x="304" dy="28">务单，照推荐表写出建议的</tspan><tspan x="304" dy="28">架构。</tspan></text>
+<text class="say" x="304" y="288"><tspan x="304"><tspan class="k k2">你确认</tspan>：逐栏看任务单，都</tspan><tspan x="304" dy="28">对就说"任务单确认"。</tspan></text>
+</g>
+<path class="arrow" d="M546 232 H566" marker-end="url(#m)"/>
+<g id="s3">
+<rect class="card" x="572" y="0" width="256" height="424" rx="12"/>
+<rect class="band" x="572" y="0" width="256" height="64" rx="12"/>
+<rect class="band" x="572" y="40" width="256" height="24"/>
+<text class="no" x="590" y="27">第 3 站</text>
+<text class="name" x="590" y="52">排表画图</text>
+<text class="say" x="590" y="100"><tspan x="590"><tspan class="k k0">你做</tspan>：说清每步谁来做，模</tspan><tspan x="590" dy="28">糊的词给个数，比如"涨跌</tspan><tspan x="590" dy="28">超过 5%"。</tspan></text>
+<text class="say" x="590" y="208"><tspan x="590"><tspan class="k k1">AI 做</tspan>：先认出你的样例，</tspan><tspan x="590" dy="28">再把步骤排成运行表，告诉</tspan><tspan x="590" dy="28">你怎么照表画流程图。</tspan></text>
+<text class="say" x="590" y="316"><tspan x="590"><tspan class="k k2">你确认</tspan>：输入认对了、图和</tspan><tspan x="590" dy="28">表对得上，说"流程就这</tspan><tspan x="590" dy="28">样"。</tspan></text>
+</g>
+<path class="arrow" d="M832 232 H852" marker-end="url(#m)"/>
+<g id="s4">
+<rect class="card" x="858" y="0" width="256" height="424" rx="12"/>
+<rect class="band" x="858" y="0" width="256" height="64" rx="12"/>
+<rect class="band" x="858" y="40" width="256" height="24"/>
+<text class="no" x="876" y="27">第 4 站</text>
+<text class="name" x="876" y="52">一步一票</text>
+<text class="say" x="876" y="100"><tspan x="876"><tspan class="k k0">你做</tspan>：回答三个问题，说清</tspan><tspan x="876" dy="28">第 1 步怎么算做对。</tspan></text>
+<text class="say" x="876" y="180"><tspan x="876"><tspan class="k k1">AI 做</tspan>：写好票 01 和验收</tspan><tspan x="876" dy="28">单，你说"就这样跑"才写</tspan><tspan x="876" dy="28">程序、跑你的样例。</tspan></text>
+<text class="say" x="876" y="288"><tspan x="876"><tspan class="k k2">你确认</tspan>：亲眼看结果，说</tspan><tspan x="876" dy="28">"票 01 通过"，或指出哪项</tspan><tspan x="876" dy="28">不对。</tspan></text>
+</g>
+<path class="arrow" d="M1118 232 H1138" marker-end="url(#m)"/>
+<g id="s5">
+<rect class="card" x="1144" y="0" width="256" height="424" rx="12"/>
+<rect class="band" x="1144" y="0" width="256" height="64" rx="12"/>
+<rect class="band" x="1144" y="40" width="256" height="24"/>
+<text class="no" x="1162" y="27">第 5 站</text>
+<text class="name" x="1162" y="52">收尾交接</text>
+<text class="say" x="1162" y="100"><tspan x="1162"><tspan class="k k0">你做</tspan>：定下还没定的事，在</tspan><tspan x="1162" dy="28">项目文件夹新开对话，问它</tspan><tspan x="1162" dy="28">几个问题。</tspan></text>
+<text class="say" x="1162" y="208"><tspan x="1162"><tspan class="k k1">AI 做</tspan>：写好交接说明，更</tspan><tspan x="1162" dy="28">新 README 和进度记录。</tspan></text>
+<text class="say" x="1162" y="288"><tspan x="1162"><tspan class="k k2">你确认</tspan>：项目自己的 AI</tspan><tspan x="1162" dy="28">答对了，说"采用"或"停</tspan><tspan x="1162" dy="28">止"。</tspan></text>
+</g>
+<g id="check">
+<rect class="check" x="0" y="494" width="1400" height="96" rx="12"/>
+<text class="no" x="24" y="528">体检</text>
+<text class="say2" x="96" y="528"><tspan x="96">已经有做了一半的项目？另开一个空的工作空间，调用教练说"帮我体检 &lt;文件夹完整路径&gt;"。AI 只读不改，写一份体检报告，告诉你做到哪、缺什么；</tspan><tspan x="96" dy="28">你再选只要报告、原地接着做，还是另建新项目。</tspan></text>
+<path class="arrow dash" d="M700 490 V436" marker-end="url(#m)"/>
+<text class="hint" x="712" y="466">选"原地接着做"，就到那个项目里从报告说的那站进</text>
+</g>
+</svg>
+</main>
+</body>
+</html>
