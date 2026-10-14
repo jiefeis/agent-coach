@@ -42,5 +42,6 @@ INTAKE.md 第 2 行的"还没说"改成今天日期。
 - README.md
 - materials\（至少一份文件）
 - docs\PROJECT_INDEX.md
+- docs\rules\（可有可无）
 - docs\INTAKE.md
 - output\（可有可无）

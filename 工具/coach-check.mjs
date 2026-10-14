@@ -215,7 +215,7 @@ function tally(dir, items) {
   return extras;
 }
 // tally 之后：清单里还缺的项（completion 两种类型共用）
-const lacking = (items) => items.filter((it) => !(it.folder && it.mark !== NOTES[0] ? it.dirs : it.files));
+const lacking = (items) => items.filter((it) => it.mark !== NOTES[1] && !(it.folder && it.mark !== NOTES[0] ? it.dirs : it.files));
 
 function files() {
   if (!/^[1-5]$/.test(extra ?? '')) stop(`站号要写 1 到 5，现在是"${extra ?? ''}"`);
@@ -223,7 +223,7 @@ function files() {
   const items = readList(extra), rec = extra === '1' ? null : readRec();
   const rf = path.join(PROJ, 'docs', 'run-flow.md');
   const rfLines = lexists(rf) ? fs.readFileSync(rf, 'utf8').split(/\r?\n/) : [];
-  const noDraw = headOf(rfLines).includes('不画图'); // 只看第一张表之前的表头
+  const noDraw = noDrawOf(rfLines); // 只看第一张表之前的表头
   const extras = tally(PROJ, items);
 
   for (const it of items) {
@@ -234,6 +234,8 @@ function files() {
     else no(`缺 ${it.p}`);
   }
   extras.forEach((m) => no(m));
+  const idx = path.join(PROJ, 'docs', 'PROJECT_INDEX.md');
+  if (lexists(path.join(PROJ, 'docs', 'rules')) || (lexists(idx) && /docs[\\/]rules/i.test(fs.readFileSync(idx, 'utf8')))) ruleFiles(readTree(PROJ, false, true), PROJ);
   if (rec) six(rec);
 
   // materials 基线：第一次通过时写，以后比对。新增只列出；改了、删了判不通过
@@ -275,6 +277,13 @@ const items = (s) => (s === '—' ? [] : s.split('、').map((x) => x.trim()).fil
 const inputId = (s) => { const m = s.match(/^输入\s*(\d+)\s*(?:[（(][^（()）]*[）)])?$/); return m ? `输入 ${Number(m[1])}` : null; };
 // 第一张表之前的文字，就是表头状态行（流程就这样、不画图）
 const headOf = (lines) => { const k = lines.findIndex((l) => l.trim().startsWith('|')); return (k < 0 ? lines : lines.slice(0, k)).join('\n'); };
+// 已确认的本轮图决定单独记表头；历史不画图保留，不能盖过当前要求。
+function noDrawOf(lines) {
+  const head = headOf(lines), choices = new Set([...head.matchAll(/^本轮图[：:]\s*(出图|不画图)\s*$/gm)].map((m) => m[1]));
+  if (choices.size > 1) { no('本轮图决定冲突，图要求未核，请澄清确认记录'); return null; }
+  return choices.size ? choices.has('不画图') : head.includes('不画图');
+}
+
 // 没有运行表：判不通过，回 null。dir 默认学员项目；scan 传被体检文件夹（只读）
 function flowLines(dir = PROJ) {
   const f = path.join(dir, 'docs', 'run-flow.md');
@@ -359,9 +368,15 @@ function inputs() {
 // 输入清单各行"放哪"去重（flow 的图源和文字版共用）
 const dirsOf = (inRows) => [...new Set(inRows.map((r) => r[1].trim()))];
 // 运行表的数据行 → 步（flow、scan 共用）
-const stepsOf = (rows) => rows.map(([n, who, from, what, to, judge]) =>
-  ({ n, who, from: items(from), what, short: what.split(/[：:]/)[0].trim(), to: items(to), judge,
-    back: judge === '—' ? [] : [...new Set([...(judge.split('｜')[2] ?? '').matchAll(/退回第\s*(\d+)\s*步/g)].map((m) => Number(m[1])))] }));
+const stepsOf = (rows) => rows.map(([n, who, from, what, to, judge]) => {
+  const tail = judge === '—' ? '' : (judge.split('｜')[2] ?? '');
+  // ponytail: 只拆已有“退回第K步”分句；并列目标不能唯一对应条件时留待人工核，不猜自然语言。
+  const returns = [...tail.matchAll(/([^]*?)退回第\s*(\d+)\s*步/g)].map((m) =>
+    ({ to: Number(m[2]), label: m[0].replace(/^[，,；;。\s]+/, '').trim() }));
+  const unclear = returns.length > 1 && returns.some((r) => /^(?:退回|[或和及、]\s*(?:退回)?)/.test(r.label));
+  return { n, who, from: items(from), what, short: what.split(/[：:]/)[0].trim(), to: items(to), judge,
+    back: [...new Set(returns.map((r) => r.to))], returns, unclear };
+});
 // 第 N 步"从哪拿"的每一项，要是输入清单里的输入，或前面某步的"放到哪"（flow、scan 共用）；回问题列表
 function fromErrs(steps, N, ids) {
   const madeAt = (x) => steps.findIndex((s) => s.to.includes(x)) + 1;
@@ -373,7 +388,7 @@ function fromErrs(steps, N, ids) {
   });
 }
 
-// 核运行表（规则见 做法\3-排表画图.md、模板\docs\run-flow.模板.md），过了就生成泳道图的 JSON 和文字版；图由学员用 Archify 画，这里只给路径
+// 核运行表（规则见 做法\3-排表画图.md、模板\docs\run-flow.模板.md），过了就生成泳道图 JSON 和文字版；当前AI用已有能力画图，这里只给路径与指引。
 function flow() {
   label = '第 3 站';
   const SRC = 'docs\\check\\run-flow.workflow.json', TXT = 'docs\\check\\run-flow.txt';
@@ -424,21 +439,23 @@ function flow() {
   if (bad) { note('运行表没过；上一轮的图源、文字版已删'); return; }
   ok(`运行表 ${W} 步，规则都过了`);
 
+  steps.filter((s) => s.unclear).forEach((s) => note(`第 ${s.n} 步退回条件与目标无法唯一对应，图分支未核，请先澄清`));
   const title = lines[0].match(/^#\s*运行表[：:]\s*(.+)$/)?.[1].trim() || path.basename(PROJ);
   const dirs = dirsOf(inRows), json = swimlane(title, ids, steps, dirs);
   writeIn(SRC, JSON.stringify(json, null, 2) + '\n');
   ok(`写好 ${SRC}（泳道图的源，由运行表生成，不手改）`);
-  const noDraw = headOf(lines).includes('不画图');
+  const noDraw = noDrawOf(lines);
   writeIn(TXT, [`运行表：${title}（由 docs\\run-flow.md 生成${noDraw ? '；这次不画图' : '；docs\\run-flow.html 是同一张表画的图'}）`,
     noDraw ? '【你判断】是要你判断的地方。' : '四道：你｜AI（看情况）｜程序（AI照规矩）｜文件。第 N 步就是图上第 N 列，实线箭头是下一步，虚线回头箭头是退回，【你判断】就是红框。', '',
     `开始：你把 ${ids.join('、')} 放进 ${dirs.join('、')}`,
     ...steps.flatMap((s, j) => [`第 ${j + 1} 步 ${s.short}｜${s.who}`, `  读：${s.from.join('、') || '—'}`, `  写：${s.to.join('、') || '—'}`, ...(s.judge === '—' ? [] : [`  【你判断】${s.judge}`])]),
   ].join('\n') + '\n');
   ok(`写好文字版 ${TXT}`);
+  if (noDraw === null) return;
   if (noDraw) { note(`运行表表头写了"不画图"，这次不出图，看文字版 ${TXT}`); return; }
   const html = path.join(PROJ, 'docs', 'run-flow.html');
   if (lexists(html)) htmlVsSrc(PROJ, html, json, false);
-  note(`出图：请用"Archify 架构图生成器"（WorkBuddy 技能市场或 GitHub 上有）只照图源 ${SRC} 画，用标准档（standard），不改图源，不给它 SOP 和别的文件，图存成 docs\\run-flow.html。`);
+  note(`出图：当前 AI 用已安装的"Archify 架构图生成器"只照图源 ${SRC} 更新实际图 docs\\run-flow.html，用标准档（standard），不改图源，不给它 SOP 和别的文件；回执用--out-dir docs/check/archify/<本轮图修订>，改图换不重名子目录，旧证据保留，同版失败按协议恢复；保留图旁delivery.json，按技能协议校验、实际打开图核对。缺能力或只更新 JSON 就报图同步未完成，不擅自安装。`);
 }
 
 // ---------- 学员画的图：只认 Archify html 的数据属性（专用读法，不进 readTree 的 TEXT）；图源先转成同一形状，只有一个比较器 ----------
@@ -502,7 +519,7 @@ function htmlVsSrc(root, abs, json, noDraw) {
   const p = picOf(abs);
   if (p?.err) return note(`${RUN_HTML} 没读（${p.err}），请学员核它是不是照图源画的`);
   if (!p) return note(`${RUN_HTML} 里读不出 Archify 的框，请学员核它是不是照图源画的`);
-  if (!(Array.isArray(json?.lanes) && json.lanes.some((l) => l?.id === 'prog'))) return note('旧图源（三道），图不比，请学员核');
+  if (noDraw === null) return note('本轮图要求未核，图同源暂不判');
   if (noDraw) return note(`表头写了不画图，${RUN_HTML} 当旧图，不比`);
   const d = picDiff(p, toPic(json));
   return d ? no(`图和图源不一致：${d}；请照图源重画`) : ok(`图和图源一致：${p.nodes.length} 框、${p.edges.length} 线（${RUN_HTML}）`);
@@ -511,32 +528,36 @@ function htmlVsSrc(root, abs, json, noDraw) {
 // 运行表 → Archify workflow JSON。四道：你、AI（看情况）、程序（AI照规矩）、文件；列＝步号；读写连线、下一步、退回；你的判断画红框、列头变色
 function swimlane(title, ids, steps, dirs) {
   const nodes = [], edges = [], used = new Set(), made = new Map(); // made：路径 → [文件节点, 写它的那步的节点]
+  // ponytail: 短表四道原源972×660被按宽放大而溢出；预留桌面横向容量，仍由实际浏览器门核，不固定viewBox上限。
+  const minWidth = steps.length <= 3 ? Math.ceil(1200 / (steps.length + 1)) : 96;
   // 宽度照 archify 的算法估：全角字算 2 份、半角算 1 份。估宽了图会太宽，1440 屏上字小到判不过
   const units = (t) => [...t].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
   const node = (id, lane, col, type, label, sublabel, tag) => nodes.push({ id, lane, col, type, label, ...(sublabel ? { sublabel } : {}), ...(tag ? { tag } : {}),
-    width: Math.max(96, ...[label, sublabel ?? ''].map((t) => units(t) * 7 + 28)) });
+    width: Math.max(minWidth, ...[label, sublabel ?? ''].map((t) => units(t) * 7 + 28)) });
   const edge = (base, from, to, label, variant, role) => { let id = base, k = 1; while (used.has(id)) id = base + ++k; used.add(id); edges.push({ id, from, to, label, variant, ...(role ? { role } : {}) }); };
   const actor = (K) => (steps[K - 1]?.who === '你' ? 'you' : 'a') + K; // 第 K 步做事的框
   // 红框写"你核第 N 步：<你要判断什么的第一段>"，太长就截短加"…"
-  // 上限 62 份宽是拿示例表用真 archify 试出来的（62 份 showcase 能过、63 份不过）
+  // 同步回路实测：标题限50份宽，完整退回条件仍在箭头，避免1440屏文字投影小于6px。
   const box = (N, judge) => {
     const t = `你核第 ${N} 步：${judge.split('｜')[0].trim()}`;
-    if (units(t) <= 62) return t;
+    if (units(t) <= 50) return t;
     let s = '';
-    for (const ch of t) { if (units(s + ch) > 60) break; s += ch; }
+    for (const ch of t) { if (units(s + ch) > 48) break; s += ch; }
     return s + '…';
   };
   const phases = [{ id: 'p0', label: '开始：放输入', fromCol: 0, toCol: 0 }];
-  node('you0', 'you', 0, 'external', '放入输入', ids.join('、'));
+  node('you0', 'you', 0, 'external', '放入或补换输入', '照输入清单；补齐不代批准');
   node('f0', 'files', 0, 'database', `${dirs.join('、')}（每次放）`, ids.join('｜'));
   edge('r0-put', 'you0', 'f0', '放入', 'emphasis');
   steps.forEach((s, j) => {
     const N = j + 1, me = s.who === '你', a = (me ? 'you' : 'a') + N, gate = s.judge !== '—';
-    const back = s.back.length ? `不对退回第 ${s.back.join('、')} 步` : '';
+    const back = s.returns.length ? (s.unclear ? '退回条件未核' : '条件、动作见退回箭头') : ''; 
+    const ruleNames = [...new Set([...s.what.matchAll(/docs[\\/]rules[\\/]([^\\/\r\n]*?\.md)(?=$|[^A-Za-z0-9_.-])/gi)].map((m) => m[1]))];
+    const readRules = ruleNames.length ? `先读规则：${ruleNames.join('、')}` : '';
     phases.push({ id: `p${N}`, label: `第${N}步 ${s.short}`, fromCol: N, toCol: N, ...(gate ? { variant: 'emphasis' } : {}) });
-    if (me) node(a, 'you', N, 'security', box(N, s.judge), back, '你判断');
-    else if (s.who === 'AI照规矩') node(a, 'prog', N, 'backend', s.short);
-    else node(a, 'ai', N, 'cloud', s.short);
+    if (me) node(a, 'you', N, 'security', box(N, s.judge), [back, readRules].filter(Boolean).join('；'), '你判断');
+    else if (s.who === 'AI照规矩') node(a, 'prog', N, 'backend', s.short, readRules);
+    else node(a, 'ai', N, 'cloud', s.short, readRules);
     // 读：输入从 f0（"放哪"的文件夹）连过来；"你"那一步读前面的产出，画成"那一步 → 你"交你看
     const src = new Map(s.from.map((x) => (inputId(x) ? ['f0', '读'] : me ? [made.get(x)[1], '交你看'] : [made.get(x)[0], '读'])));
     for (const [from, label] of src) edge(`r${N}-in`, from, a, label, label === '读' ? 'dashed' : 'emphasis');
@@ -547,10 +568,14 @@ function swimlane(title, ids, steps, dirs) {
       edge(`r${N}-out`, a, `f${N}`, '写', 'dashed');
     }
     if (gate && !me) { node(`you${N}`, 'you', N, 'security', box(N, s.judge), back, '你判断'); edge(`r${N}-gate`, a, `you${N}`, '交你看', 'emphasis'); }
-    for (const K of s.back) edge(`r${N}-back${K}`, `you${N}`, actor(K), `不对退回第${K}步`, 'dashed', 'return');
+    if (!s.unclear) for (const r of s.returns) edge(`r${N}-back${r.to}`, `you${N}`, actor(r.to), r.label, 'dashed', 'return');
     if (gate && steps[N]) edge(`r${N}-ok`, `you${N}`, actor(N + 1), '对了', 'emphasis');
   });
   // 没有判断的第 N 步，它的框 → 第 N+1 步的框画"下一步"；两框之间已有边（如"交你看"）的不加
+  if (ids.length && steps[0]?.short === '认出输入') {
+    edge('input-invalid', actor(1), 'you0', '输入不合格，停下问你补换', 'dashed', 'return');
+    edge('input-retry', 'you0', actor(1), '补换后核原确认，有效才重新识别', 'dashed', 'return');
+  }
   steps.forEach((s, j) => {
     const A = actor(j + 1), B = actor(j + 2);
     if (steps[j + 1] && s.judge === '—' && !edges.some((e) => (e.from === A && e.to === B) || (e.from === B && e.to === A))) edge(`r${j + 1}-next`, A, B, '下一步', 'emphasis');
@@ -661,8 +686,8 @@ function scanGuard() {
   if (!st.isDirectory()) stop(`被体检文件夹 ${SRC} 是一个文件，不是文件夹`);
   for (const [p, who] of [[PROJ, '报告文件夹'], [SRC, '被体检文件夹']]) if (inside(COACH, p)) stop(`${who} ${p} 在教练文件夹里面，要放在教练文件夹外面`);
   if (inside(SRC, COACH)) stop(`教练文件夹在被体检文件夹 ${SRC} 里面：不体检装着教练文件夹的文件夹（例如整个桌面），请给具体的项目文件夹`);
-  if (path.relative(PROJ, SRC) === '') stop(`报告文件夹和被体检文件夹相同：${SRC}。报告要另放：另开一个工作空间，报告放它的 体检\\<名>`);
-  if (inside(PROJ, SRC) || inside(SRC, PROJ)) stop(`报告文件夹 ${PROJ} 和被体检文件夹 ${SRC} 嵌套（一个在另一个里面），要分开放：另开一个工作空间，报告放它的 体检\\<名>`);
+  if (path.relative(PROJ, SRC) === '') stop(`报告文件夹和被体检文件夹相同：${SRC}。报告要另放：换到目标外的报告位置`);
+  if (inside(PROJ, SRC) || inside(SRC, PROJ)) stop(`报告文件夹 ${PROJ} 和被体检文件夹 ${SRC} 嵌套（一个在另一个里面），要分开放：换到目标外的报告位置`);
   if (lexists(PROJ)) {
     if (!fs.statSync(PROJ).isDirectory()) stop(`报告文件夹 ${PROJ} 是一个文件，不是文件夹`);
     const others = filesUnder(PROJ).map((f) => path.relative(PROJ, f)).filter((r) => r.toLowerCase() !== 'docs\\check\\scan.txt');
@@ -688,7 +713,7 @@ function sha(abs) {
 // 最多读 MAX_FILES 份；超出的照样走完整棵树数份数（只看名字和大小），不算指纹、不读内容
 // files：{ rel, size, sha, text }，text 只有 256 KB 以内、能按 UTF-8 解开的文字文件才有
 // memoryText（quote 用）：.workbuddy\memory 里的也照样读，标 memory: true
-function readTree(root, memoryText = false) {
+function readTree(root, memoryText = false, referencesOnly = false) {
   const t = { files: [], dirs: [], links: [], skipped: [], unread: [], over: 0, memory: 0 };
   const utf8 = new TextDecoder('utf-8', { fatal: true });
   const walk = (rel, memory = false) => {
@@ -699,7 +724,7 @@ function readTree(root, memoryText = false) {
       if (st.isSymbolicLink()) t.links.push(r);
       else if (st.isDirectory()) {
         t.dirs.push(r);
-        if (SKIP.has(e.name.toLowerCase())) t.skipped.push(r);
+        if (SKIP.has(e.name.toLowerCase()) || (referencesOnly && DATA.test(r + '\\'))) t.skipped.push(r);
         else if (r.toLowerCase() === '.workbuddy\\memory' && !memoryText) try { t.memory = filesUnder(abs).length; } catch (err) { t.unread.push(`${r}\\：打不开（${err.code ?? err.message}），没看`); }
         else walk(r, memory || r.toLowerCase() === '.workbuddy\\memory');
       } else if (!st.isFile()) continue;
@@ -708,8 +733,8 @@ function readTree(root, memoryText = false) {
         const f = { rel: r, size: st.size };
         if (memory) f.memory = true;
         try {
-          f.sha = sha(abs);
-          if (TEXT.has(path.extname(r).slice(1).toLowerCase())) {
+          if (!referencesOnly) f.sha = sha(abs);
+          if ((!referencesOnly || inMemory(r)) && TEXT.has(path.extname(r).slice(1).toLowerCase())) {
             if (st.size > MAX_TEXT) t.unread.push(`${r}：超过 256 KB，没读内容`);
             else try { f.text = utf8.decode(fs.readFileSync(abs)); } catch { t.unread.push(`${r}：不是 UTF-8，没读内容`); }
           }
@@ -753,7 +778,7 @@ function kindOf(t) {
 // 教练做的项目：已过的站（当前站减 1 及以前）清单里必须有的项；n 是当前站号，搭建完成算 6
 function mustHave(t, n) {
   const rf = t.files.find((f) => f.rel.toLowerCase() === 'docs\\run-flow.md')?.text ?? '';
-  const noDraw = headOf(rf.split(/\r?\n/)).includes('不画图');
+  const noDraw = noDrawOf(rf.split(/\r?\n/));
   return readList(n - 1).filter((it) => it.mark !== NOTES[1] && !(it.mark === NOTES[2] && noDraw));
 }
 
@@ -812,7 +837,7 @@ function completion(t, kind) {
       made.set(g, (made.get(g) ?? 0) + 1);
     }
     if (made.size) note(`旧产物：${[...made].map(([g, c]) => (g.endsWith('\\') ? `${g}（${c} 份）` : g)).join('、')}`);
-    // 进度记录里的 64 位十六进制串和现算的 SHA-256 比：同一行点名了包内文件的和那份比，没点名的和所有文件比
+    // 进度记录里的64位摘要：明确文件保留原比较；没有比较对象/算法依据的只记未核。
     const withSha = t.files.filter((f) => f.sha);
     lines.forEach((l, i) => {
       const low = l.replaceAll('/', '\\').toLowerCase();
@@ -824,14 +849,12 @@ function completion(t, kind) {
           const f = named.find((x) => x.sha === rec) ?? named[0], same = f.sha === rec;
           (same ? ok : note)(`${at} ${f.rel}：现算${same ? '＝' : '≠'}记录（现算 ${f.sha.slice(0, 8)}｜记录 ${rec.slice(0, 8)}）`);
         } else {
-          const f = withSha.find((x) => x.sha === rec);
-          if (f) ok(`${at}：现算＝记录（没点名文件，和 ${f.rel} 相同｜记录 ${rec.slice(0, 8)}）`);
-          else note(`${at}：现算≠记录（没点名文件，和所有文件都不同｜记录 ${rec.slice(0, 8)}）`);
+          note(`${at}：摘要未核（未明确比较文件｜记录 ${rec.slice(0, 8)}）`);
         }
       }
     });
   } else if (kind === '别的做法') {
-    note('AI 判断：不是教练做的，也不是旧网页做的；按新教练一站都没过，另建新文件夹从第 1 站起；下面五样只是线索，不用它们判到哪站');
+    note('AI 判断：不是教练做的，也不是旧网页做的；按项目原规矩判断进度，下面五样只作新教练格式对照，缺少不直接算故障，不默认另建');
     const l1 = readList(1);
     tally(SRC, l1);
     const lack = lacking(l1);
@@ -883,7 +906,7 @@ function clip(line, at = 0) {
   return (from > s ? '…' : '') + cs.slice(from, from + 28).join('') + (from + 28 < e ? '…' : '');
 }
 
-function memory(t, kind) {
+function memory(t, kind, routesOnly = false) {
   const L = (s) => s.toLowerCase(), byLow = new Map(t.files.map((f) => [L(f.rel), f]));
   const dirs = new Set([...t.dirs, ...t.links].map(L)), files = new Set([...byLow.keys(), ...t.links.map(L)]);
   const under = (d) => t.files.filter((f) => L(path.dirname(f.rel)) === L(d)).map((f) => f.rel); // 文件夹第一层的文件
@@ -926,14 +949,16 @@ function memory(t, kind) {
   const entries = ENTRY.map((r) => byLow.get(L(r))).filter(Boolean).map((f) => f.rel);
   const likeRules = t.files.map((f) => f.rel).filter((r) => !r.includes('\\') && /规则|规矩|rules/i.test(r) && !entries.includes(r));
   const agents = entries.find((r) => L(r) === 'agents.md'), cb = entries.find((r) => L(r).endsWith('codebuddy.md'));
-  if (!entries.length) no(`入口：根目录没有 ${ENTRY.join('、')}`);
-  else if (agents && cb) no(`入口：${agents} 和 ${cb} 并存，WorkBuddy 只读后者`);
-  else ok(`入口：${entries.join('、')}`);
-  if (likeRules.length) note(`候选入口（平台不会自动读）：${likeRules.join('、')}`);
-  if (t.memory) note(`.workbuddy\\memory：${t.memory} 份，只数份数，不读内容`);
+  if (!routesOnly) {
+    if (!entries.length) no(`入口：根目录没有 ${ENTRY.join('、')}`);
+    else if (agents && cb) no(`入口：${agents} 和 ${cb} 并存，WorkBuddy 只读后者`);
+    else ok(`入口：${entries.join('、')}`);
+    if (likeRules.length) note(`候选入口（平台不会自动读）：${likeRules.join('、')}`);
+    if (t.memory) note(`.workbuddy\\memory：${t.memory} 份，只数份数，不读内容`);
+  }
   // 进度记录（只对别的做法）：在不在；不在就找含"当前站""进度记录""做到哪"的行，最多 3 份
   const prog = [];
-  if (kind === '别的做法') {
+  if (!routesOnly && kind === '别的做法') {
     const idx = byLow.get('docs\\project_index.md'), PROG = /当前站|进度记录|做到哪/;
     if (idx) { note(`进度记录：${idx.rel} 在，没有"当前站"行（请 AI 读）`); prog.push([idx.rel, '进度记录，没有"当前站"行']); }
     else for (const f of t.files.filter((x) => x.text && inMemory(x.rel) && /\.(md|txt)$/i.test(x.rel))) {
@@ -968,6 +993,7 @@ function memory(t, kind) {
     q = next;
   }
   const fourth = [...layer].filter(([, n]) => n === 4).map(([r]) => r);
+  if (routesOnly) return { entries, layer };
 
   // 断链：教练做的项目，指向不在的文件、且它在已过的站的清单里，记 ✗；当前站及以后才有的只记 ·
   const st = kind.startsWith('教练做的') ? Number(/第 (\d) 站/.exec(kind)?.[1] ?? (kind.endsWith('搭建完成') ? 6 : 0)) : 0;
@@ -999,6 +1025,14 @@ function memory(t, kind) {
   else if (!loose.length) note('没接上的候选：0 个');
   else loose.slice(0, 20).forEach((r) => note(`没接上的候选：${r}（请 AI 按用途判）`));
 
+  // 状态仅是选件线索，不判当前/孤岛/批准；复用缓存，不新增读取或挤占 want 的八份名额。
+  const statusClues = t.files.filter((f) => inMemory(f.rel) && /^(?:docs\\tickets\\|\.scratch\\[^\\]+\\issues\\)/i.test(f.rel))
+    .flatMap((f) => {
+      const lines = (f.text ?? '').split(/\r?\n/), i = lines.findIndex((line) => /^\s*(?:[-*]\s+)?(?:\*\*)?Status(?:\*\*)?\s*:\s*(?:\*\*)?\s*[a-z][\w-]*/i.test(line));
+      return i >= 0 ? [{ rel: f.rel, line: lines[i], n: i + 1 }] : [];
+    });
+  statusClues.slice(0, 8).forEach((c) => note(`工单状态字样候选：${c.rel} 第 ${c.n} 行"${clip(c.line)}"（仅状态字样，请 AI 核用途、引用和是否适用；不表示批准或待跑）`));
+
   // 请 AI 读：入口、根目录 README、别的做法的进度记录、有条件字样的行所在的文件，旧网页和别的做法的"不在"（最多 10 条）；合计不超过 8 份
   starts.forEach((r) => want(r, entries.length ? '入口' : '候选入口'));
   if (byLow.has('readme.md')) want(byLow.get('readme.md').rel, '给人看的说明；核"下一步""结果在哪"和进度记录、运行表对不对得上；"结果在哪"指整件事的最终结果，运行表只排了先做的一块时不算对不上');
@@ -1008,7 +1042,51 @@ function memory(t, kind) {
   if (cands.length > 25) skip.push(`路线候选另有 ${cands.length - 25} 条没列`);
   if (entries.length && !t.over && loose.length > 20) skip.push(`没接上的候选另有 ${loose.length - 20} 个没列`);
   if (broken.length > 10) skip.push(`断链另有 ${broken.length - 10} 条没列`);
-  return { starts, skip };
+  if (statusClues.length > 8) skip.push(`工单状态字样候选另有 ${statusClues.length - 8} 份没列`);
+  return { starts, skip, entries, layer };
+}
+
+// 文件地图仍是唯一登记表；读取链复用 memory 的路径识别和三层引用图。
+function ruleFiles(t, root) {
+  const low = (s) => s.replaceAll('/', '\\').toLowerCase();
+  const underRules = (s) => low(s) === 'docs\\rules' || low(s).startsWith('docs\\rules\\');
+  const idx = indexOf(t)?.text?.split(/\r?\n/) ?? [];
+  const h = idx.findIndex((l) => l.trim() === '## 文件地图');
+  const rows = h < 0 ? [] : below(idx, h).filter((l) => l.trim().startsWith('|')).map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((x) => x.trim()));
+  const listed = rows.filter((r) => low(r[0] ?? '').includes('docs\\rules'));
+  const actual = t.files.filter((f) => underRules(f.rel)), links = t.links.filter(underRules);
+  if (!listed.length && !actual.length && !links.length && !t.dirs.some(underRules)) return;
+  const before = bad, registered = new Map();
+  for (const row of listed) {
+    const rel = row[0].replaceAll('/', '\\');
+    if (!/^docs\\rules\\[^\\:*?"<>|\x00-\x1f]+\.md$/i.test(rel) || rel.split('\\').some((x) => x === '..' || x === '.')) {
+      no(`非法规则路径 ${row[0]}：文件地图只准逐件登记相对路径 docs\\rules\\第一层文件.md，不准目录、绝对路径或越界`); continue;
+    }
+    if (row.length !== 3 || !row[1] || !row[2] || row.slice(1).some((x) => x === '—' || x === '待填')) no(`规则 ${rel} 的文件地图缺用途或谁在什么步骤读`);
+    if (registered.has(low(rel))) no(`规则 ${rel} 在文件地图重复登记`);
+    registered.set(low(rel), rel);
+  }
+  links.forEach((rel) => no(`规则 ${rel} 是联接/链接，不当普通 Markdown`));
+  t.dirs.filter((r) => underRules(r) && low(r) !== 'docs\\rules').forEach((r) => no(`规则子目录 ${r} 不允许：只认第一层普通 Markdown`));
+  if (t.over) no(`规则读取链未覆盖：文件超过 ${MAX_FILES} 份`);
+  for (const f of actual) {
+    if (!/^docs\\rules\\[^\\]+\.md$/i.test(f.rel) || f.text === undefined || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(f.text)) {
+      no(`非法规则 ${f.rel}：只认第一层普通 UTF-8 Markdown，不收可执行文件、二进制或未读内容`); continue;
+    }
+    if (!inside(root, real(path.join(root, f.rel)))) { no(`规则 ${f.rel} 范围外`); continue; }
+    if (fs.lstatSync(path.join(root, f.rel)).nlink !== 1) { no(`规则 ${f.rel} 是硬链接，不当普通 Markdown`); continue; }
+    if (!registered.has(low(f.rel))) no(`规则 ${f.rel} 未在文件地图逐件登记`);
+  }
+  for (const [key, rel] of registered) if (!actual.some((f) => low(f.rel) === key)) no(`规则 ${rel} 不存在或不是普通文件`);
+  // 登记表是清单，不是读取指令。仍用同一引用分析，只排除地图段的边；不重读文件。
+  let end = h + 1;
+  while (end < idx.length && !idx[end].startsWith('## ')) end++;
+  const readIndex = h < 0 ? null : idx.filter((_, n) => n < h || n >= end).join('\n');
+  const files = h < 0 ? t.files : t.files.map((f) => f === indexOf(t) ? { ...f, text: readIndex } : f);
+  const routes = memory({ ...t, files }, kindOf(t), true);
+  const reachable = new Set([...routes.layer.keys()].map(low));
+  for (const f of actual) if (!routes.entries.length || !reachable.has(low(f.rel))) no(`规则 ${f.rel} 从实际入口读不到：文件地图登记不代替入口引用`);
+  if (bad === before && actual.length) ok(`规则 ${actual.length} 份：文件地图逐件登记，实际入口引用可达；适用条件由 AI 对原文核`);
 }
 
 // 内容对得上（只查教练做的项目，只读）：① 票的"这一步"三格＝运行表同一行，运行表每步"从哪拿"接得上；② AGENTS"共 N 步"＝运行表步数；
@@ -1108,7 +1186,7 @@ function pics(t, kind, starts, fl) {
   if (st && st <= 3 && !view.length && !srcs.length) { note(`还没到出图那站（当前站 ${st}），不判图`); return []; }
   const words = [...t.files.filter((f) => path.basename(L(f.rel)) === 'run-flow.md' || L(f.rel) === 'docs\\check\\run-flow.txt').map((f) => f.rel),
     ...starts.flatMap((r) => { const ns = numbered(byLow.get(L(r))?.text ?? ''); return ns.length >= 3 ? [`${r} 第 ${ns[0]} 行起 ${ns.length} 条编号步骤`] : []; })];
-  const rf = byLow.get('docs\\run-flow.md')?.text, noDraw = headOf((rf ?? '').split(/\r?\n/)).includes('不画图'), shorts = stepRows(rf);
+  const rf = byLow.get('docs\\run-flow.md')?.text, noDraw = noDrawOf((rf ?? '').split(/\r?\n/)), shorts = stepRows(rf);
   let json = null;
   try { json = JSON.parse(mine?.text); } catch {}
   for (const f of cap(view, '可查看候选')) {
@@ -1149,12 +1227,13 @@ function selfPic(f, fl) {
   if (!fl?.rows || !fl?.inRows) { note(`自家图源：运行表没读成，不比`); return; }
   const steps = stepsOf(fl.rows), ids = fl.inRows.map((r) => inputId(r[0])).filter(Boolean);
   const arr = (x) => (Array.isArray(x) ? x : []), nodes = arr(j.nodes), edges = arr(j.edges), ph = arr(j.phases);
+  steps.filter((s) => s.unclear).forEach((s) => note(`第 ${s.n} 步退回条件与目标无法唯一对应，图分支未核，请先澄清`));
   // 新形状（有程序道，v1.6 起生成的）：照同一张运行表重算期望图源，两份转成同一形状再比
   if (arr(j.lanes).some((l) => l?.id === 'prog')) {
     if (steps.some((s, i) => fromErrs(steps, i + 1, ids).length)) { note('运行表有接不上的步，图源不比'); return; }
     const d = picDiff(toPic(j), toPic(swimlane('', ids, steps, dirsOf(fl.inRows))));
     if (d) no(`自家图源和运行表不一致：${d}（${SELF}）`);
-    else ok(`图源与运行表一致：${steps.length} 步的阶段标签、连线、人工关口（${SELF}）`);
+    else if (!steps.some((s) => s.unclear)) ok(`图源与运行表一致：${steps.length} 步的阶段标签、连线、人工关口（${SELF}）`);
     return;
   }
   const at = (lane, col) => nodes.find((x) => x.lane === lane && x.col === col);
@@ -1185,7 +1264,22 @@ function selfPic(f, fl) {
     }
     if (diff.length) { no(`自家图源和运行表不一致，第一处在第 ${N} 步：${diff.join('；')}（${SELF}）`); return; }
   }
-  ok(`图源与运行表一致：${steps.length} 步的阶段标签、读写边、人工关口（${SELF}）`);
+  // 三道沿原列/道映射共用控制关系，保留旧布局，不只核红框是否存在。
+  const expected = swimlane('', ids, steps, dirsOf(fl.inRows));
+  const mapped = (id) => {
+    const n = expected.nodes.find((x) => x.id === id);
+    if (!n) return undefined;
+    if (/^you[1-9]/.test(id)) return nodes.find((x) => x.col === n.col && x.type === 'security')?.id;
+    return at(n.lane === 'prog' ? 'ai' : n.lane, n.col)?.id;
+  };
+  // 沿旧节点映射核完整关系集合；多出的补齐开跑线、重复线也不能绕过原确认。
+  const shape = (xs, map) => ({ nodes: [], legend: {}, edges: xs.map((e) => {
+    const from = map(e.from), to = map(e.to), label = e.label ?? '', dashed = e.variant === 'dashed';
+    return { id: `${from}>${to}:${label}:${dashed}`, from, to, label, dashed };
+  }) });
+  const d = picDiff(shape(edges, (id) => id), shape(expected.edges, mapped));
+  if (d) { no(`自家图源和运行表不一致：控制线/读写关系 ${d}（${SELF}）`); return; }
+  if (!steps.some((s) => s.unclear)) ok(`图源与运行表一致：${steps.length} 步的阶段标签、读写边、人工关口及退回补换（${SELF}）`);
 }
 
 // ---------- ## 架构：教练做的读任务单⑥查推荐表；旧网页只列旧记录的解决方式；别的做法只列线索。整节正好一个"推荐："行，实际是哪种由 AI 定 ----------
@@ -1267,6 +1361,7 @@ function scan() {
   completion(t, kind);
   out.push('## 长期记忆');
   const mem = memory(t, kind);
+  if (kind.startsWith('教练做的')) ruleFiles(t, SRC);
   const fl = kind.startsWith('教练做的') ? content(t, kind) : null;
   out.push('## 给人看的图');
   const picSkip = pics(t, kind, mem.starts, fl);

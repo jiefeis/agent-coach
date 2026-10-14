@@ -63,7 +63,7 @@ svg .hint{fill:var(--muted);font-size:14px}
 <text class="no" x="590" y="27">第 3 站</text>
 <text class="name" x="590" y="52">排表画图</text>
 <text class="say" x="590" y="100"><tspan x="590"><tspan class="k k0">你做</tspan>：说清每步谁来做，模</tspan><tspan x="590" dy="28">糊的词给个数，比如"涨跌</tspan><tspan x="590" dy="28">超过 5%"。</tspan></text>
-<text class="say" x="590" y="208"><tspan x="590"><tspan class="k k1">AI 做</tspan>：先认出你的样例，</tspan><tspan x="590" dy="28">再把步骤排成运行表，告诉</tspan><tspan x="590" dy="28">你怎么照表画流程图。</tspan></text>
+<text class="say" x="590" y="208"><tspan x="590"><tspan class="k k1">AI 做</tspan>：先认出你的样例，</tspan><tspan x="590" dy="28">再把步骤排成运行表，用已</tspan><tspan x="590" dy="28">安装能力生成、核对实际图。</tspan></text>
 <text class="say" x="590" y="316"><tspan x="590"><tspan class="k k2">你确认</tspan>：输入认对了、图和</tspan><tspan x="590" dy="28">表对得上，说"流程就这</tspan><tspan x="590" dy="28">样"。</tspan></text>
 </g>
 <path class="arrow" d="M832 232 H852" marker-end="url(#m)"/>
@@ -91,11 +91,12 @@ svg .hint{fill:var(--muted);font-size:14px}
 <g id="check">
 <rect class="check" x="0" y="494" width="1400" height="96" rx="12"/>
 <text class="no" x="24" y="528">体检</text>
-<text class="say2" x="96" y="528"><tspan x="96">已经有做了一半的项目？另开一个空的工作空间，调用教练说"帮我体检 &lt;文件夹完整路径&gt;"。AI 只读不改，写一份体检报告，告诉你做到哪、缺什么；</tspan><tspan x="96" dy="28">你再选只要报告、原地接着做，还是另建新项目。</tspan></text>
+<text class="say2" x="96" y="528"><tspan x="96">已有项目？在原项目调用教练说"帮我体检当前项目"；报告放在项目外。只体检先不改，要连着修复就说"体检并修复当前项目"；</tspan><tspan x="96" dy="28">AI 按已批准范围修复、逐项复诊，再接回原任务；五站仍由你确认。也可另选重新搭建。</tspan></text>
 <path class="arrow dash" d="M700 490 V436" marker-end="url(#m)"/>
-<text class="hint" x="712" y="466">选"原地接着做"，就到那个项目里从报告说的那站进</text>
+<text class="hint" x="712" y="466">复诊后按真实进度接回原任务；五站仍由你确认</text>
 </g>
 </svg>
+<p class="intro">已确认的改动收尾，说“同步改动”：AI核文件、规则读取链与实际图一致，保留五站和确认关口。</p>
 </main>
 </body>
 </html>
