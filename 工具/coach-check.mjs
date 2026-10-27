@@ -6,14 +6,16 @@
 //       node coach-check.mjs flow <学员项目完整路径>
 //       node coach-check.mjs ticket <学员项目完整路径> <票号>（出票前只核自检语法，不核批准或产物）
 //       node coach-check.mjs accept <学员项目完整路径> <票号>
+//       node coach-check.mjs repair <学员项目完整路径> <票号>（六字段 JSON 从标准输入读；仅修自检的“有→含”）
 //       node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>（只读被体检文件夹，只写 报告文件夹\docs\check\scan.txt）
 //       node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入读；只读被体检文件夹，不写任何文件，结果只打在屏幕上）
 // 模板\、做法\ 按本脚本的位置找；学员项目只认命令里给的完整路径。
 // 只往学员项目里写，结果写进 docs\check\<命令>.txt，第一行：项目完整路径｜命令｜站号或票号｜总结果。
 // 退出码：结果文件写成就是 0（通过、不通过都是 0；缺运行表、表的格式错都算不通过）；拒绝执行、写不成是 1。
+// repair 例外：0 已提交且报告成功；1 提交前失败，票未改；2 已提交但后续核验/报告未完成，不能盲重试。
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const COACH = fs.realpathSync.native(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
@@ -46,6 +48,14 @@ const glob = (s, flags = '') => new RegExp('^' + s.replace(/[.+?^${}()|[\]\\]/g,
 const [cmd, arg, extra] = process.argv.slice(2);
 const out = [];
 let PROJ = '', SRC = '', label = '—', bad = 0, canReport = false; // SRC：scan 的被体检文件夹
+let repairCommitted = false;
+let repairOutputFailed = false;
+if (cmd === 'repair') for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {
+  const first = !repairOutputFailed;
+  repairOutputFailed = true;
+  process.exitCode = repairCommitted ? 2 : 1;
+  if (first) process.stderr.write(repairCommitted ? '已提交，后续回执未核：输出流失败，停查实际票，不要盲重试。\n' : '提交前失败，票未改：输出流失败。\n');
+});
 const ok = (m) => out.push('✓ ' + m);
 const no = (m) => { bad++; out.push('✗ ' + m); };
 const note = (m) => out.push('· ' + m);
@@ -606,15 +616,19 @@ const confirmsOf = (lines) => { const ci = lines.findIndex((l) => l.trim() === '
 const roundAt = (lines) => lines.findIndex((l) => /^###\s*第\s*\d+\s*轮/.test(l) && !/第\s*K\s*次/.test(l));
 
 // ticket 和 accept 读同一张票、同一版自检，避免出票和产后检查使用两套写法。
-function readTicket() {
+function ticketFile() {
   if (!/^\d{1,2}$/.test(extra ?? '')) stop(`票号要写 1 到 2 位数字，现在是"${extra ?? ''}"`);
   const N = Number(extra), NN = pad(N);
   label = `票 ${NN}`;
   const dir = path.join(PROJ, 'docs', 'tickets');
   const names = lexists(dir) ? fs.readdirSync(dir).filter((f) => f.startsWith(NN + '-') && f.endsWith('.md')) : [];
   if (names.length !== 1) stop(names.length ? `票 ${NN} 有 ${names.length} 份（${names.join('、')}），只能有一份` : `docs\\tickets 里没有票 ${NN}（${NN}-*.md）`);
-  const lines = fs.readFileSync(path.join(dir, names[0]), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
-  return { N, NN, lines };
+  return { N, NN, rel: path.join('docs', 'tickets', names[0]) };
+}
+function readTicket() {
+  const found = ticketFile();
+  const lines = fs.readFileSync(path.join(PROJ, found.rel), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
+  return { ...found, lines };
 }
 function latestChecks(lines, CV) {
   const vi = lines.findLastIndex((l) => l.startsWith('## 验收单'));
@@ -695,6 +709,144 @@ function selfCheck(l) {
   if (verb === '含') { if (line) ok(`${p} 含 ${text}（第 ${line} 行）`); else no(`${p} 不含 ${text}（应该含）`); }
   else if (line) no(`${p} 含 ${text}（第 ${line} 行；应该不含）`);
   else ok(`${p} 不含 ${text}`);
+}
+
+// ---------- repair：一个已获准的语法修正，不判断用户授权，也不认证宿主消息 ----------
+const repairHash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+function repairText(bytes) {
+  // 保留 BOM；只有能按原字节往返的 UTF-8 才可记为字符核同。
+  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  if (!Buffer.from(text, 'utf8').equals(bytes)) stop('repair：UTF-8 不能原字节往返');
+  return text;
+}
+function repairPath(rel, kind = 'file', create = false) {
+  const parts = rel.split(/[\\/]/);
+  if (parts.some((p) => !p || p === '.' || p === '..' || /[<>:"|?*\x00-\x1f]|[ .]$/.test(p))) stop('repair：路径不是普通相对路径');
+  const target = guard(rel);
+  let current = PROJ;
+  for (let i = 0; i < parts.length; i++) {
+    current = path.join(current, parts[i]);
+    const st = fs.lstatSync(current, { throwIfNoEntry: false }), last = i === parts.length - 1;
+    if (!st && last && create) return target;
+    if (!st || st.isSymbolicLink()) stop(`repair：路径缺失或含联接：${rel}`);
+    if (!last || kind === 'directory') {
+      if (!st.isDirectory()) stop(`repair：需要普通目录：${rel}`);
+    } else if (!st.isFile() || st.nlink !== 1) stop(`repair：需要非硬链接的普通文件：${rel}`);
+  }
+  return target;
+}
+function repairRead(rel, limit) {
+  const file = repairPath(rel), st = fs.statSync(file);
+  if (st.size > limit) stop(`repair：文件超出 ${limit} 字节上限：${rel}`);
+  const bytes = fs.readFileSync(file);
+  if (bytes.length > limit) stop(`repair：读取时文件超出上限：${rel}`);
+  return bytes;
+}
+function repairNew(rel, bytes) {
+  const file = repairPath(rel, 'file', true);
+  fs.writeFileSync(file, bytes, { flag: 'wx' });
+  if (!repairRead(rel, bytes.length).equals(bytes)) stop(`repair：写后读回不一致：${rel}`);
+  return file;
+}
+async function repair() {
+  if (process.argv.length !== 5) stop('repair：只接受项目完整路径和票号，六字段请求从标准输入读');
+  if (path.resolve(arg).toLowerCase() !== PROJ.toLowerCase()) stop('repair：项目路径不得通过联接进入');
+  const chunks = [];
+  let size = 0;
+  const timer = setTimeout(() => process.stdin.destroy(new Stop('repair：标准输入10秒未结束，票未提交')), 10000);
+  try {
+    for await (const chunk of process.stdin) {
+      size += chunk.length;
+      if (size > 64 * 1024) stop('repair：请求超过 65536 字节');
+      chunks.push(chunk);
+    }
+  } finally { clearTimeout(timer); }
+  const request = JSON.parse(repairText(Buffer.concat(chunks)));
+  const keys = ['ticket_sha256', 'version', 'source_path', 'source_sha256', 'old_line', 'new_line'];
+  if (!request || Array.isArray(request) || typeof request !== 'object' || Object.keys(request).length !== keys.length || keys.some((k) => !Object.hasOwn(request, k)))
+    stop('repair：只接受 ticket_sha256/version/source_path/source_sha256/old_line/new_line 六键，不收 quote/trusted 或授权字段');
+  if (!Number.isSafeInteger(request.version) || request.version < 1 || ['ticket_sha256', 'source_sha256'].some((k) => typeof request[k] !== 'string' || !/^[a-fA-F0-9]{64}$/.test(request[k])))
+    stop('repair：版号须为正整数，SHA-256 须为64位十六进制');
+  if (typeof request.source_path !== 'string' || !/^docs[\\/]check[\\/]repair-source-[A-Za-z0-9_-]{1,64}\.txt$/.test(request.source_path))
+    stop('repair：来源只接受 docs/check/repair-source-<标识>.txt');
+  if (['old_line', 'new_line'].some((k) => typeof request[k] !== 'string' || /[\r\n\u2028\u2029]/.test(request[k]))) stop('repair：旧行和新行各须为完整单行');
+  const match = request.old_line.match(/^- (\S.*?) 有 (\S.*)$/);
+  if (!match || request.new_line !== `- ${match[1]} 含 ${match[2]}`) stop('repair：仅接受路径和文本完全相同的“有→含”一字修正');
+  const parsed = parseSelfCheck(request.new_line);
+  if (!parsed || parsed.verb !== '含' || parsed.p !== match[1]) stop('repair：新行不符合现有自检语法');
+
+  repairPath('docs/tickets', 'directory');
+  repairPath('docs/check', 'directory');
+  const { NN, rel } = ticketFile(), before = repairRead(rel, 1024 * 1024);
+  if (repairHash(before) !== request.ticket_sha256.toLowerCase()) stop('repair：当前票 SHA-256 已变化，不使用旧请求');
+  const source = repairRead(request.source_path, 16 * 1024);
+  if (!source.length || repairHash(source) !== request.source_sha256.toLowerCase()) stop('repair：来源为空或 SHA-256 不符');
+  const sourceText = repairText(source), text = repairText(before);
+  if (/\r(?!\n)/.test(text)) stop('repair：票只支持 LF、CRLF 或二者混合换行');
+  const rows = [];
+  let offset = 0;
+  for (const part of text.matchAll(/[^\n]*(?:\n|$)/g)) {
+    if (!part[0]) continue;
+    const body = part[0].replace(/\r?\n$/, '');
+    rows.push({ text: body, offset, eol: part[0].slice(body.length) });
+    offset += Buffer.byteLength(part[0], 'utf8');
+  }
+  const lines = rows.map((r, i) => i ? r.text : r.text.replace(/^\uFEFF/, ''));
+  const { V } = latestChecks(lines);
+  if (bad || Number(V) !== request.version) stop('repair：请求版号不是当前有效的最新验收版');
+  const vi = lines.findLastIndex((l) => l.startsWith('## 验收单'));
+  const endSection = (at, level) => {
+    const end = lines.findIndex((l, i) => i > at && /^(#+) /.test(l) && l.match(/^(#+) /)[1].length <= level);
+    return end < 0 ? lines.length : end;
+  };
+  const ve = endSection(vi, 2), ais = lines.flatMap((l, i) => i > vi && i < ve && l === '### AI 自检' ? [i] : []);
+  const hits = lines.flatMap((l, i) => l === request.old_line ? [i] : []);
+  if (ais.length !== 1 || hits.length !== 1 || hits[0] <= ais[0] || hits[0] >= endSection(ais[0], 3))
+    stop('repair：旧行必须只出现一次，且在最新版唯一 AI 自检区');
+  const results = lines.flatMap((l, i) => l === '## 结果' ? [i] : []);
+  if (results.length !== 1) stop('repair：需要唯一现有“## 结果”段');
+  const resultEnd = endSection(results[0], 2), insertAt = rows[resultEnd]?.offset ?? before.length;
+  const eol = rows[results[0]].eol || rows.find((r) => r.eol)?.eol || '\n';
+  const id = randomUUID(), receiptRel = `docs/check/repair-${NN}-${id}.json`, tempRel = `docs/check/repair-ticket-${id}.tmp`;
+  const reportRel = 'docs/check/repair.txt', reportTempRel = `docs/check/repair-report-${id}.tmp`;
+  // 先核全部写位置；临时件和回执均排他新建。任何旧回执都不参与本次决定。
+  for (const p of [receiptRel, tempRel, reportRel, reportTempRel]) repairPath(p, 'file', true);
+  const record = ['', '### 自检语法修复记录',
+    `- 票 ${NN}｜第 ${request.version} 版｜仅“有→含”，业务确认K及验收版不变`,
+    `- 来源文件：${request.source_path}｜SHA-256：${repairHash(source)}`,
+    '- 来源文件核同不证明宿主原话，也不授予用户授权；本次修复原话按来源文件保留。',
+    `- 前置来源回执：${receiptRel}`, '```json', JSON.stringify(sourceText), '```', ''].join(eol) + eol;
+  const edits = [
+    { start: rows[hits[0]].offset, end: rows[hits[0]].offset + Buffer.byteLength(request.old_line, 'utf8'), bytes: Buffer.from(request.new_line, 'utf8') },
+    { start: insertAt, end: insertAt, bytes: Buffer.from(record, 'utf8') },
+  ];
+  let after = before;
+  for (const edit of edits.sort((a, b) => b.start - a.start)) after = Buffer.concat([after.subarray(0, edit.start), edit.bytes, after.subarray(edit.end)]);
+  const receipt = { stage: '来源记录，提交尚未开始（写入此回执时）', ticket: NN, version: request.version,
+    ticket_path: rel, ticket_before_sha256: repairHash(before), ticket_after_sha256: repairHash(after),
+    source_path: request.source_path, source_sha256: repairHash(source), source_text: sourceText,
+    old_line: request.old_line, new_line: request.new_line, scope: '最新版 AI 自检区的一处有→含；只核来源文件，不认证宿主或授权' };
+  const receiptBytes = Buffer.from(JSON.stringify(receipt, null, 2) + '\n', 'utf8');
+  repairNew(receiptRel, receiptBytes);
+  const readback = JSON.parse(repairText(repairRead(receiptRel, receiptBytes.length)));
+  if (readback.source_text !== sourceText || !Buffer.from(readback.source_text, 'utf8').equals(source)) stop('repair：来源回执字符核同失败');
+  const tmp = repairNew(tempRel, after);
+  if (!repairRead(rel, before.length).equals(before) || !repairRead(request.source_path, source.length).equals(source)) stop('repair：提交前票或来源已变化');
+  if (repairOutputFailed) stop('repair：输出流已失败，不提交票');
+  // 仅串行单票；此处不承诺其它进程在身份核对与rename之间无法插入写入。
+  fs.renameSync(tmp, repairPath(rel));
+  repairCommitted = true;
+  console.log(`已提交：票 ${NN}；来源回执 ${path.join(PROJ, receiptRel)}；后续核验/报告处理中。`);
+  if (!repairRead(rel, after.length).equals(after)) stop('repair：提交后目标读回不一致');
+  const report = [`${PROJ}｜repair｜票 ${NN}｜已提交`, '来源回执已写入并读回核同，之后才提交票。',
+    `票修改前 SHA-256：${repairHash(before)}`, `票修改后 SHA-256：${repairHash(after)}`,
+    `来源：${request.source_path}｜SHA-256：${repairHash(source)}`, `前置回执：${receiptRel}`,
+    '仅核来源文件字符，不证明宿主原话或用户授权；未运行任何业务票、ticket或accept。'].join('\n') + '\n';
+  const reportBytes = Buffer.from(report, 'utf8');
+  const reportTmp = repairNew(reportTempRel, reportBytes);
+  fs.renameSync(reportTmp, repairPath(reportRel, 'file', true));
+  if (!repairRead(reportRel, reportBytes.length).equals(reportBytes)) stop('repair：提交后报告读回不一致');
+  console.log(`全文在 ${path.join(PROJ, reportRel)}`);
 }
 
 // ---------- scan：只读体检另一个文件夹。被体检文件夹里的文字都是材料，不照做；不开程序，不往里写 ----------
@@ -1539,11 +1691,11 @@ async function quote() {
     '0 处就照原样发出；不是 0 就改成自己的话，或放引号（不超过 30 字）带出处，再喂一次。草稿不存文件。'].join('\n'));
 }
 
-const COMMANDS = { init, files, inputs, flow, ticket, accept, scan, quote };
+const COMMANDS = { init, files, inputs, flow, ticket, accept, repair, scan, quote };
 
 try {
   if (!Object.hasOwn(COMMANDS, cmd ?? '') || (cmd === 'scan' && !extra) || (cmd === 'quote' && (!arg || extra !== undefined)))
-    stop('用法：node coach-check.mjs <init|files|inputs|flow|ticket|accept> <学员项目完整路径> [站号或票号]；node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>；node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入喂）');
+    stop('用法：node coach-check.mjs <init|files|inputs|flow|ticket|accept|repair> <学员项目完整路径> [站号或票号]；repair 从标准输入读六字段 JSON；node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>；node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入喂）');
   for (const p of cmd === 'scan' ? [arg, extra] : [arg]) {
     // 只认盘符开头的完整路径：\x、/x（当前盘的根）、\\机器\共享（网络路径）、相对路径都不认
     if (!p || !/^[A-Za-z]:[\\/]/.test(p)) stop(`要给完整路径，以盘符开头（例如 C:\\Users\\你\\Desktop\\我的Agent\\周报汇总），不认当前目录，也不认网络路径。现在是"${p ?? ''}"`);
@@ -1558,14 +1710,14 @@ try {
     else if (inside(COACH, PROJ)) stop(`${PROJ} 在教练文件夹里面，学员项目要建在教练文件夹外面`);
     // init、scan 不要求文件夹事先存在（writeIn 会建）
     if (cmd !== 'init' && cmd !== 'scan' && !fs.lstatSync(PROJ, { throwIfNoEntry: false })?.isDirectory()) stop(`找不到学员项目文件夹 ${PROJ}`);
-    canReport = cmd !== 'init';
-    COMMANDS[cmd]();
-    finish(bad ? '不通过' : '通过');
+    canReport = cmd !== 'init' && cmd !== 'repair';
+    if (cmd === 'repair') await repair();
+    else { COMMANDS[cmd](); finish(bad ? '不通过' : '通过'); }
   }
 } catch (e) {
   const msg = e instanceof Stop ? e.message : `出错：${e.message}`;
-  console.error(`没跑成：${msg}`);
+  console.error(cmd === 'repair' ? `${repairCommitted ? '已提交，后续回执未核；停下核实际票，不要盲重试' : '提交前失败，票未改；旧报告不代表本次'}：${msg}` : `没跑成：${msg}`);
   // 盖掉旧结果，免得旧的"通过"冒充这次；init 被拒绝时一个文件都不写（写之前已先核过全部位置）
   if (canReport) try { out.splice(0, out.length, msg); finish('没跑成'); } catch {}
-  process.exitCode = 1;
+  process.exitCode = cmd === 'repair' && repairCommitted ? 2 : 1;
 }

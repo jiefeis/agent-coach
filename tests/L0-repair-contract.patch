@@ -1,0 +1,22 @@
+--- a/脚本/L0.py
++++ b/脚本/L0.py
+@@ -305,13 +305,13 @@
+         repair_gate = sec(way4, '5')
+         project_repair = next((l for l in tagents.splitlines() if l.startswith('- 不通过先诊断：')), '')
+-        repair_terms = ('本次修复原话', '旧业务确认')
++        repair_terms = ('旧业务确认', 'repair', '来源回执', '票结果段')
+         repair_sections = [('做法4失败节', repair_gate), ('项目不通过段', project_repair)]
+         absent = [f'{name}缺{term}' for name, t in repair_sections for term in repair_terms if term not in t]
+         for name, t in repair_sections:
+-            for alternatives in [('获准', '使用者说“就这样改”后'), ('票的结果段', '票结果段'), ('读回成功才改', '读回与本次消息逐字核同'), ('不作新业务确认/验收版', '修复不增业务K/验收版'), ('等价语法修正不改标准', '等价语法不改标准')]:
++            for alternatives in [('“就这样改”',), ('读回成功才改',), ('不作新业务确认/验收版', '修复不增业务K/验收版'), ('等价语法修正不改标准', '等价语法不改标准'), ('2已提交未核', '2已提交后续未核')]:
+                 if not any(term in t for term in alternatives): absent.append(f'{name}缺{alternatives[0]}')
+-        check(not absent, '修复静态合同：本次修复批准先另记读回，不混入业务确认或验收版', '；'.join(absent))
+-        quote_terms = ('读回与本次消息逐字核同', '标点/引号照抄', '不符先修记录核同才改目标')
++        check(not absent, '修复静态合同：来源回执读回后才提交，区分未改与已提交，不混业务确认或验收版', '；'.join(absent))
++        quote_terms = ('来源文件核同不认证宿主/授权',)
+         quote_gaps = [f'{name}缺{term}' for name, t in repair_sections for term in quote_terms if term not in t]
+-        check(not quote_gaps and '中文引号不换ASCII' in project_repair,
+-              '原话核同静态合同：读回对照本次消息原字符，不一致先修记录再改目标', '；'.join(quote_gaps))
++        check(not quote_gaps and all(term in project_repair for term in ('ticket_sha256', 'version', 'source_path', 'source_sha256', 'old_line', 'new_line', 'repair-source-', '中文引号不换ASCII', '禁止模型复述冒充原始消息', '围栏代码块内JSON字符串', '无工具停下说明未执行')),
++              '来源核同静态合同：六字段绑定来源文件，代码容器保原文，不认证宿主或授权', '；'.join(quote_gaps))

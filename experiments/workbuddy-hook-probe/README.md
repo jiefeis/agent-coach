@@ -1,16 +1,16 @@
 # WorkBuddy Hook：未验证的局部能力探针
 
-这是第一批能力探针，只观测宿主消息事件，拒绝受保护dummy写入，并提供一个固定内容的Write正对照。**不是完整审批系统，不自动修票，也不表示此前时序/引语问题已经修好。** 普通agent-coach安装不加载这里的文件。
+这是既有Phase A能力探针，只观测宿主消息事件，拒绝受保护dummy写入，并提供一个固定内容的Write正对照。**不是完整审批系统，不自动修票，也不表示此前时序/引语问题已经修好。** 普通agent-coach安装不加载这里的文件。本轮v1.16 r10新增的窄`repair`入口位于`工具/coach-check.mjs`，与本实验分开，当前尚未测试。
 
-初始代码提交 [`6684194da5fd23e32b0fad38c20013275eeb7d45`](https://github.com/jiefeis/agent-coach/commit/6684194da5fd23e32b0fad38c20013275eeb7d45) 上传时，本轮新测试尚未运行。远端核收后，从该提交下载ZIP并新解压，在Node.js 24.14.1运行`guard.test.cjs`，handler合成断言通过（退出码0）。这是模拟stdin事件的本地检查，未验证WorkBuddy宿主行为。
+初始代码提交 [`6684194da5fd23e32b0fad38c20013275eeb7d45`](https://github.com/jiefeis/agent-coach/commit/6684194da5fd23e32b0fad38c20013275eeb7d45) 上传时，本轮新测试尚未运行。远端核收后，从该提交下载ZIP并新解压，在Node.js 24.14.1运行`guard.test.cjs`，handler合成断言通过（退出码0）。这是模拟stdin事件的本地检查，未验证WorkBuddy宿主行为，也不覆盖后来新增的`repair`入口。
 
-WorkBuddy 5.9.2的宿主验证仍待正常打开本次新合成项目，尚未投递模型消息；Hook加载、宿主原话获取与实际阻断均未验证，当前不判平台失败。Q-ORDER-01与Q-QUOTE-01继续开放。
+WorkBuddy 5.9.2实测已由使用者延期，本场活动配置已在文件侧停用，0条模型消息；Hook加载、宿主原话获取与实际阻断全部未测，不判平台失败。普通平台实测等待使用者另行通知，不再等待手动打开；停用文件不证明宿主缓存已卸载。Q-ORDER-01与Q-QUOTE-01的旧FAIL继续保留。
 
 后续代码修订仍须先同步GitHub，再取得对应测试GO；未放行前不运行新检查或激活配置。`settings.local.example.json`不是活动配置。
 
 ## 唯一候选与最少准备
 
-收到测试GO后，由执行AI把本目录复制到一个全新、只放合成资料的项目根。只试该项目的 `.codebuddy/settings.local.json`：把示例复制为该文件，不能试其他目录、父目录或用户级配置。没有Hook事件就停止，记“候选未加载/未执行”；不要全局注册后加cwd筛选。
+使用者另行通知恢复平台实测，并取得对应测试GO后，由执行AI把本目录复制到一个全新、只放合成资料的项目根。只试该项目的 `.codebuddy/settings.local.json`：把示例复制为该文件，不能试其他目录、父目录或用户级配置。没有Hook事件就停止，记“候选未加载/未执行”；不要全局注册后加cwd筛选。
 
 执行AI在该新项目的 `.hook-probe/nonce.txt` 写入本场新生成的32位小写十六进制nonce（可有一个末尾换行）。不要使用本机身份或凭据。nonce必须在测试准备时产生；源码与此README不包含将来场次的完整输入。
 
