@@ -2,7 +2,11 @@
 
 这是第一批能力探针，只观测宿主消息事件，拒绝受保护dummy写入，并提供一个固定内容的Write正对照。**不是完整审批系统，不自动修票，也不表示此前时序/引语问题已经修好。** 普通agent-coach安装不加载这里的文件。
 
-本目录尚未运行语法检查、单测或平台验证。必须先把当前修订同步GitHub，再取得本轮测试GO；此前不要运行任何脚本或激活配置。`settings.local.example.json`不是活动配置。
+初始代码提交 [`6684194da5fd23e32b0fad38c20013275eeb7d45`](https://github.com/jiefeis/agent-coach/commit/6684194da5fd23e32b0fad38c20013275eeb7d45) 上传时，本轮新测试尚未运行。远端核收后，从该提交下载ZIP并新解压，在Node.js 24.14.1运行`guard.test.cjs`，handler合成断言通过（退出码0）。这是模拟stdin事件的本地检查，未验证WorkBuddy宿主行为。
+
+WorkBuddy 5.9.2的宿主验证仍待正常打开本次新合成项目，尚未投递模型消息；Hook加载、宿主原话获取与实际阻断均未验证，当前不判平台失败。Q-ORDER-01与Q-QUOTE-01继续开放。
+
+后续代码修订仍须先同步GitHub，再取得对应测试GO；未放行前不运行新检查或激活配置。`settings.local.example.json`不是活动配置。
 
 ## 唯一候选与最少准备
 
