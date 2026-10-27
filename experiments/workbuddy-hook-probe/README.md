@@ -1,8 +1,8 @@
 # WorkBuddy Hook：未验证的局部能力探针
 
-这是既有Phase A能力探针，只观测宿主消息事件，拒绝受保护dummy写入，并提供一个固定内容的Write正对照。**不是完整审批系统，不自动修票，也不表示此前时序/引语问题已经修好。** 普通agent-coach安装不加载这里的文件。本轮v1.16 r10新增的窄`repair`入口位于`工具/coach-check.mjs`，与本实验分开，当前尚未测试。
+这是独立保留的Phase A能力探针，只观测宿主消息事件，拒绝受保护dummy写入，并提供一个固定内容的Write正对照。**不是完整审批系统，不自动修票，也不表示此前时序/引语问题已经修好。** 普通agent-coach安装不加载这里的文件。当前v1.16 r11候选只收拢通用任务接续和核心文件引用，仍待最小核收；r10特例修票入口及专用检查已撤出、未安装，工具恢复r9a原字节。本实验不是r11推进前置。
 
-初始代码提交 [`6684194da5fd23e32b0fad38c20013275eeb7d45`](https://github.com/jiefeis/agent-coach/commit/6684194da5fd23e32b0fad38c20013275eeb7d45) 上传时，本轮新测试尚未运行。远端核收后，从该提交下载ZIP并新解压，在Node.js 24.14.1运行`guard.test.cjs`，handler合成断言通过（退出码0）。这是模拟stdin事件的本地检查，未验证WorkBuddy宿主行为，也不覆盖后来新增的`repair`入口。
+初始代码提交 [`6684194da5fd23e32b0fad38c20013275eeb7d45`](https://github.com/jiefeis/agent-coach/commit/6684194da5fd23e32b0fad38c20013275eeb7d45) 上传时，本轮新测试尚未运行。远端核收后，从该提交下载ZIP并新解压，在Node.js 24.14.1运行`guard.test.cjs`，handler合成断言通过（退出码0）。这仅是模拟stdin事件的本地检查，未验证WorkBuddy宿主行为，也不覆盖r11接续规则。
 
 WorkBuddy 5.9.2实测已由使用者延期，本场活动配置已在文件侧停用，0条模型消息；Hook加载、宿主原话获取与实际阻断全部未测，不判平台失败。普通平台实测等待使用者另行通知，不再等待手动打开；停用文件不证明宿主缓存已卸载。Q-ORDER-01与Q-QUOTE-01的旧FAIL继续保留。
 
