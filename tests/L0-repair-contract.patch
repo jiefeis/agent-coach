@@ -1,6 +1,7 @@
 --- a/脚本/L0.py
 +++ b/脚本/L0.py
-@@ -305,13 +305,13 @@
+@@ -304,17 +304,17 @@
+               '交接静态合同：无下一AI票仍核人工待办，仅全部步骤已证完成才说业务完成', '仍有直接完成分支：' + '、'.join(shortcuts))
          repair_gate = sec(way4, '5')
          project_repair = next((l for l in tagents.splitlines() if l.startswith('- 不通过先诊断：')), '')
 -        repair_terms = ('本次修复原话', '旧业务确认')
@@ -20,3 +21,6 @@
 -              '原话核同静态合同：读回对照本次消息原字符，不一致先修记录再改目标', '；'.join(quote_gaps))
 +        check(not quote_gaps and all(term in project_repair for term in ('ticket_sha256', 'version', 'source_path', 'source_sha256', 'old_line', 'new_line', 'repair-source-', '中文引号不换ASCII', '禁止模型复述冒充原始消息', '围栏代码块内JSON字符串', '无工具停下说明未执行')),
 +              '来源核同静态合同：六字段绑定来源文件，代码容器保原文，不认证宿主或授权', '；'.join(quote_gaps))
+         查('做法\\1-建项目.md', t1, ('复制归位',))
+         查('规矩', rules, ('学员的数据文件',))
+         rf = text.get('模板/docs/run-flow.模板.md', '')
