@@ -1160,18 +1160,19 @@ function content(t, kind) {
         const where = at < 0 ? f.rel + ' 的"## 这一步"里没写' : f.rel + ' 第 ' + (h + at + 2) + ' 行';
         if (at < 0 || !mine || !row[c]) { errs.push('票 ' + pad(N) + '"' + k + '"缺必要值或与运行表第 ' + N + ' 步不同（' + where + '）'); continue; }
         const refs = items(mine), wanted = items(row[c]);
-        if (k !== '做什么' && [...refs, ...wanted].some((x) => invalidPath(x) || (k === '放到哪' && pathLike(x) && !/^(work|output)\\/i.test(x)))) {
+        if (k !== '做什么' && [...refs, ...wanted].some((x) => invalidPath(x) || (k === '放到哪' && !/^(work|output)\\[^\\]/.test(x)))) {
           errs.push('票 ' + pad(N) + '"' + k + '"有非法路径或范围：' + mine + '；运行表是 ' + row[c] + '（' + where + '）');
           continue;
         }
         if (mine === row[c]) continue;
+        const differentPresence = k !== '做什么' && ((refs.length > 0) !== (wanted.length > 0));
         const namedInputs = k === '从哪拿' && refs.length && wanted.length && [...refs, ...wanted].every((x) => inputId(x));
         const badInput = k === '从哪拿' && refs.some((x) => inputId(x) && !ids.includes(inputId(x)));
         const futureOutput = k === '从哪拿' && refs.some((x) => !inputId(x) && steps.slice(N - 1).some((step) => step.to.includes(x)));
         const otherInputs = namedInputs && signature(refs, inputId) !== signature(wanted, inputId);
         const otherOutputs = k === '放到哪' && refs.length && wanted.length && [...refs, ...wanted].every(pathLike) &&
           ![...refs, ...wanted].some(linked) && signature(refs, pathKey) !== signature(wanted, pathKey);
-        if (badInput || futureOutput || otherInputs || otherOutputs) {
+        if (differentPresence || badInput || futureOutput || otherInputs || otherOutputs) {
           errs.push('票 ' + pad(N) + '"' + k + '"是 ' + mine + '，运行表第 ' + N + ' 步是 ' + row[c] + '（' + where + '）');
         } else {
           pending.push('票 ' + pad(N) + '"' + k + '"差异未核：票值「' + mine + '」（' + where + '）；运行表值「' + row[c] + '」（docs\\run-flow.md 运行表第 ' + N + ' 步）；请沿既有流程和输入依据补证');
