@@ -50,13 +50,15 @@ const ok = (m) => out.push('✓ ' + m);
 const no = (m) => { bad++; out.push('✗ ' + m); };
 const note = (m) => out.push('· ' + m);
 
+// 目标和材料根都解开已有联接；每次重算，只守串行写入边界。
+const inMaterials = (target) => inside(real(path.join(PROJ, 'materials')), target);
 // 只写进学员项目，不写进 materials，不写进教练文件夹；先核后写
 function guard(rel, isMaterials = false) {
   const t = real(path.join(PROJ, rel));
   if (!inside(PROJ, t)) stop(`不写：${t} 在学员项目外面`);
   if (inside(COACH, t)) stop(`不写：${t} 在教练文件夹里面`);
   if (SRC && inside(SRC, t)) stop(`不写：${t} 在被体检文件夹里面`);
-  if (!isMaterials && inside(path.join(PROJ, 'materials'), t)) stop(`不写：${t} 在 materials 里，materials 只读`);
+  if (!isMaterials && inMaterials(t)) stop(`不写：${t} 在 materials 里，materials 只读`);
   return t;
 }
 const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -422,6 +424,7 @@ function flow() {
       if (x.includes('/') || x.split('\\').some((p, i, a) => p === '.' || p === '..' || /[ .]$/.test(p) || (!p && i < a.length - 1))) no(`第 ${N} 步"放到哪"的 ${x} 要写成 work\\… 或 output\\… 的反斜杠路径，不许有 /、. 或 ..，每段不以点或空格结尾`);
       else if (!/^(work|output)\\[^\\]/.test(x)) no(`第 ${N} 步"放到哪"的 ${x} 要在 work\\ 或 output\\ 下（用反斜杠；materials 只读）`);
       else if (!inside(PROJ, t) || !['work', 'output'].includes(top) || inside(COACH, t)) no(`第 ${N} 步"放到哪"的 ${x} 实际落在 ${t}，要在学员项目的 work\\ 或 output\\ 里（materials 只读）`);
+      else if (inMaterials(t)) no('第 ' + N + ' 步"放到哪"的 ' + x + ' 落在材料真实目录 ' + t + '，materials 只读');
       else if ((fs.statSync(t, { throwIfNoEntry: false })?.nlink ?? 1) > 1) no(`第 ${N} 步"放到哪"的 ${x} 已经有一份，是别的文件的硬链接（写它会改到那份文件），先删掉它`);
       else if (x.startsWith('work\\') && !x.startsWith(`work\\${pad(N)}-`)) no(`第 ${N} 步"放到哪"的 ${x} 在 work\\ 下，文件名要以步号开头：work\\${pad(N)}-…`);
       else outs.push({ N, x, k: t.replace(/\\+$/, '').toLowerCase(), dir: x.endsWith('\\') });
@@ -651,6 +654,8 @@ function accept() {
     // 冒号后要有日期和学员原话，原话里要有确认口令"就这样跑"或"票 N 验收单确认"；"（还没有）""待学员确认"这类占位都不算
     const half = (s) => s.replace(/[０-９－／．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
     const [date = '', ...said] = last.input.slice(last[0].length).split(/[｜|]/), q = said.join('｜');
+    const namedTickets = [...half(q).matchAll(/票\s*(\d+)\s*验收单确认/g)].map((m) => Number(m[1]));
+    if (namedTickets.some((n) => n !== N)) no('最后一条确认记录有其它票的验收单确认，当前应是票 ' + NN + '；通用口令不能代替本票确认');
     if (!/^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)/.test(half(date.trim())) || !/就这样跑|票\s*\d+\s*验收单确认/.test(q) || /<[^<>]*>/.test(q))
       no(`最后一条确认记录要写成"日期｜学员原话"：日期写成 2026-09-27 这样，原话里要有学员说的"就这样跑"或"票 N 验收单确认"。现在是：${last.input}`);
   }
@@ -1137,22 +1142,47 @@ function content(t, kind) {
   const nos = (xs) => xs.map((x) => pad(x.N)).join('、');
   if (!rows || !inRows) note(`内容①②：${rf ? 'docs\\run-flow.md 没读内容或表的格式没过' : '还没有 docs\\run-flow.md'}，不比`);
   else {
-    const steps = stepsOf(rows), ids = inRows.map((r) => inputId(r[0])).filter(Boolean), errs = [];
+    const steps = stepsOf(rows), ids = inRows.map((r) => inputId(r[0])).filter(Boolean), errs = [], pending = [];
+    // 只分类可证的差异，不把输入编号展开成固定样例，也不为判等价追联接。
+    const pathLike = (x) => x.includes('\\') || /^(?:[a-z]:|\/|\.{1,2}\/|(?:materials|inputs|work|output|docs|scripts)\/)/i.test(x);
+    const invalidPath = (x) => pathLike(x) && (/[/:*?"<>|]/.test(x) || x.startsWith('\\') ||
+      x.replace(/\\$/, '').split('\\').some((p) => !p || p === '.' || p === '..' || /[ .]$/.test(p)));
+    const pathKey = (x) => path.win32.normalize(x).toLowerCase();
+    const linked = (x) => t.links.some((rel) => pathKey(x) === pathKey(rel) || pathKey(x).startsWith(pathKey(rel).replace(/\\$/, '') + '\\'));
+    const signature = (xs, key) => [...new Set(xs.map(key))].sort().join('\0');
     for (const { f, N, tl } of tickets) {
-      const h = tl.findIndex((l) => l.startsWith('## 这一步')), row = rows[N - 1];
-      if (h < 0) { errs.push(`票 ${pad(N)} 没有"## 这一步"（${f.rel}）`); continue; }
-      if (!row) { errs.push(`票 ${pad(N)}：运行表没有第 ${N} 步（${f.rel}）`); continue; }
+      const h = tl.findIndex((l) => l.startsWith('## 这一步')), row = rows.find((r) => r[0] === String(N));
+      if (h < 0) { errs.push('票 ' + pad(N) + ' 没有"## 这一步"（' + f.rel + '）'); continue; }
+      if (!row) { errs.push('票 ' + pad(N) + '：运行表没有第 ' + N + ' 步（' + f.rel + '）'); continue; }
       const body = below(tl, h);
       for (const [k, c] of [['从哪拿', 2], ['做什么', 3], ['放到哪', 4]]) {
-        const at = body.findIndex((l) => new RegExp(`^${k}[：:]`).test(l.trim())), mine = at < 0 ? null : body[at].trim().slice(k.length + 1).trim();
+        const at = body.findIndex((l) => new RegExp('^' + k + '[：:]').test(l.trim())), mine = at < 0 ? null : body[at].trim().slice(k.length + 1).trim();
+        const where = at < 0 ? f.rel + ' 的"## 这一步"里没写' : f.rel + ' 第 ' + (h + at + 2) + ' 行';
+        if (at < 0 || !mine || !row[c]) { errs.push('票 ' + pad(N) + '"' + k + '"缺必要值或与运行表第 ' + N + ' 步不同（' + where + '）'); continue; }
+        const refs = items(mine), wanted = items(row[c]);
+        if (k !== '做什么' && [...refs, ...wanted].some((x) => invalidPath(x) || (k === '放到哪' && pathLike(x) && !/^(work|output)\\/i.test(x)))) {
+          errs.push('票 ' + pad(N) + '"' + k + '"有非法路径或范围：' + mine + '；运行表是 ' + row[c] + '（' + where + '）');
+          continue;
+        }
         if (mine === row[c]) continue;
-        const where = at < 0 ? `${f.rel} 的"## 这一步"里没写` : `${f.rel} 第 ${h + at + 2} 行`;
-        errs.push(k === '做什么' || at < 0 ? `票 ${pad(N)}"${k}"和运行表第 ${N} 步不同（${where}）` : `票 ${pad(N)}"${k}"是 ${mine}，运行表第 ${N} 步是 ${row[c]}（${where}）`);
+        const namedInputs = k === '从哪拿' && refs.length && wanted.length && [...refs, ...wanted].every((x) => inputId(x));
+        const badInput = k === '从哪拿' && refs.some((x) => inputId(x) && !ids.includes(inputId(x)));
+        const futureOutput = k === '从哪拿' && refs.some((x) => !inputId(x) && steps.slice(N - 1).some((step) => step.to.includes(x)));
+        const otherInputs = namedInputs && signature(refs, inputId) !== signature(wanted, inputId);
+        const otherOutputs = k === '放到哪' && refs.length && wanted.length && [...refs, ...wanted].every(pathLike) &&
+          ![...refs, ...wanted].some(linked) && signature(refs, pathKey) !== signature(wanted, pathKey);
+        if (badInput || futureOutput || otherInputs || otherOutputs) {
+          errs.push('票 ' + pad(N) + '"' + k + '"是 ' + mine + '，运行表第 ' + N + ' 步是 ' + row[c] + '（' + where + '）');
+        } else {
+          pending.push('票 ' + pad(N) + '"' + k + '"差异未核：票值「' + mine + '」（' + where + '）；运行表值「' + row[c] + '」（docs\\run-flow.md 运行表第 ' + N + ' 步）；请沿既有流程和输入依据补证');
+        }
       }
     }
     steps.forEach((s, j) => errs.push(...fromErrs(steps, j + 1, ids).map((m) => '运行表' + m)));
     errs.forEach((m) => no('内容①：' + m));
-    if (!errs.length) ok(`内容①：${tickets.length ? `票 ${nos(tickets)} 的"这一步"三格和运行表同一行一致；` : '还没有票；'}运行表每步"从哪拿"都接得上`);
+    pending.forEach((m) => note('内容①：' + m));
+    if (!errs.length && !pending.length) ok('内容①：' + (tickets.length ? '票 ' + nos(tickets) + ' 的"这一步"三格和运行表同一行一致；' : '还没有票；') + '运行表每步"从哪拿"都接得上');
+    else if (!errs.length) note('内容①：上列差异尚未核同；运行表每步"从哪拿"已接上');
     const al = byLow.get('agents.md')?.text?.split(/\r?\n/) ?? [], k = al.findIndex((l) => /共\s*\d+\s*步/.test(l));
     const n = k < 0 ? 0 : Number(al[k].match(/共\s*(\d+)\s*步/)[1]);
     if (k < 0) note('内容②：AGENTS.md 里没写"共 N 步"，不比');
@@ -1283,6 +1313,12 @@ function selfPic(f, fl) {
   let j;
   try { j = JSON.parse(f.text); } catch { (f.text === undefined ? note : no)(`自家图源 ${SELF} ${f.text === undefined ? '没读内容' : '不是合法的 JSON'}，不比`); return; }
   if (!fl?.rows || !fl?.inRows) { note(`自家图源：运行表没读成，不比`); return; }
+  const object = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (!object(j) || ['nodes', 'edges', 'phases'].some((k) =>
+    j[k] !== undefined && (!Array.isArray(j[k]) || j[k].some((x) => !object(x))))) {
+    no('自家图源 ' + SELF + ' 结构不对：顶层及数组元素要是对象，图源本项不比');
+    return;
+  }
   const steps = stepsOf(fl.rows), ids = fl.inRows.map((r) => inputId(r[0])).filter(Boolean);
   const arr = (x) => (Array.isArray(x) ? x : []), nodes = arr(j.nodes), edges = arr(j.edges), ph = arr(j.phases);
   steps.filter((s) => s.unclear).forEach((s) => note(`第 ${s.n} 步退回条件与目标无法唯一对应，图分支未核，请先澄清`));
