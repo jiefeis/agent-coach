@@ -1,0 +1,104 @@
+--- a/脚本/coach-check.test.mjs
++++ b/脚本/coach-check.test.mjs
+@@ -3485,3 +3485,101 @@
+   const [sec] = secOf(c, p, '## 长期记忆');
+   assert.ok(only(sec, '①').some((line) => line.startsWith('✗ ') && line.includes('票 01') && line.includes('放到哪')), '产出须沿work/output形式，不得把裸文件名列未核\n' + sec);
+ });
++
++// ---------- 审计5/6/7/8：文本合同与真实init/inputs；不代模型遵从 ----------
++test('审计5-根规矩停止不依赖采用升站绿灯', () => {
++  const end = section(read(PRODUCT, 'AGENTS.md'), '## 8 结果单');
++  assert.match(end, /采用.{0,8}升站[\s\S]*files[\s\S]*通过/);
++  assert.match(end, /停止.*立即.*(?:files|accept)/);
++  assert.match(end, /记录失败.*不恢复执行/);
++  assert.match(end, /不(?:写虚假|记)完成/);
++});
++
++test('审计5-收尾停止立即生效且采用仍守原门', () => {
++  const end = section(read(PRODUCT, '做法/5-收尾交接.md'), '## 6 过关');
++  assert.match(end, /["“]停止["”]：.*立即/);
++  assert.match(end, /记录失败.*不恢复执行/);
++  assert.match(end, /决定.*范围.*未完/);
++  assert.match(end, /["“]采用["”]：[\s\S]*accept 01[\s\S]*files 5[\s\S]*通过.*搭建完成/);
++  assert.match(end, /已结束（停止）/);
++});
++
++test('审计6-排表使用学员确认实际参数而非固定W38', () => {
++  const inputs = section(read(PRODUCT, '做法/3-排表画图.md'), '## 2 输入清单');
++  assert.match(inputs, /本次.*已确认.*实际值/);
++  assert.doesNotMatch(inputs, /写["“]本次 2026-W38/);
++  assert.match(read(PRODUCT, '模板/docs/run-flow.模板.md'), /本次 <这次的值>/);
++});
++
++test('审计6-输入识别实跑W43且拒绝仍按W38认本期文件', () => {
++  const c = coach(), periods = [['2026-W38', '2026-W43'], ['2026-W37', '2026-W42'], ['2026-W36', '2026-W41']];
++  let rf = RF;
++  for (const [old, value] of periods) rf = rf.replaceAll(old, value);
++  const p = example(c, rf), folder = path.join(p, 'inputs', '01-认出输入');
++  for (const name of fs.readdirSync(folder)) {
++    let next = name;
++    for (const [old, value] of periods) next = next.replaceAll(old, value);
++    if (next !== name) fs.renameSync(path.join(folder, name), path.join(folder, next));
++  }
++  let [v, t] = check(c, p, 'inputs');
++  assert.equal(v, '通过', t);
++  assert.match(t, /✓ 输入 1.*价格日报-2026-W43\.csv/);
++  assert.match(t, /✓ 输入 2.*价格日报-2026-W42\.csv/);
++  put(p, 'docs/run-flow.md', swap(rf, '；本次 2026-W43', '；本次 2026-W38'));
++  [v, t] = check(c, p, 'inputs');
++  assert.equal(v, '不通过', t);
++  assert.match(t, /✗ 输入 1.*一份都没找到/);
++});
++
++test('审计7-真实init的跑票规矩区分固定回归与本期业务', () => {
++  const p = project(), r = run(PRODUCT, ['init', p]);
++  assert.equal(r.code, 0, r.err);
++  const rules = section(read(p, 'AGENTS.md'), '## 跑票');
++  assert.match(rules, /固定回归.*绑定样例.*参数/);
++  assert.match(rules, /本期业务.*固定规则.*本次参数/);
++  assert.match(rules, /存在.*格式.*每次必核.*不能跳/);
++  assert.match(rules, /本期.*依据.*缺.*只停依赖/);
++  assert.match(rules, /accept.*新数据.*样例.*新版.*确认/);
++  assert.match(rules, /不适用.*原条目.*绑定样例.*理由/);
++  assert.match(rules, /原要求.*回归.*未跑.*未完成/);
++  assert.match(rules, /无批准、错版、来源不明或写入\/读回失败就停/);
++  assert.equal(read(p, 'AGENTS.md'), read(PRODUCT, '模板/AGENTS.模板.md')
++    .replaceAll('{{项目名}}', path.basename(p)).replaceAll('{{日期}}', today()).replaceAll('{{教练版本}}', /v\d+\.\d+/.exec(read(PRODUCT, 'AGENTS.md'))[0]));
++});
++
++test('审计7-票模板先绑定样例参数且结果不混记未跑不适用', () => {
++  const text = read(PRODUCT, '模板/docs/票.模板.md');
++  const acceptance = section(text, '## 验收单（第 1 版）').split('### AI 自检');
++  assert.equal(acceptance.length, 2);
++  assert.match(acceptance[0], /绑定样例.*参数/);
++  assert.match(acceptance[0], /本期.*依据/);
++  assert.deepEqual(acceptance[1].trim().split(/\r?\n/), ['- 有 <路径>', '- <路径> 含 <文字>', '- <路径> 不含 <文字>']);
++  const results = section(text, '## 结果');
++  assert.match(results, /实际结论.*实际值.*证据/);
++  assert.match(results, /本轮未跑固定回归/);
++  assert.match(results, /不适用.*原条目.*绑定样例.*理由/);
++  assert.match(results, /原要求.*回归.*未跑.*未完成/);
++});
++
++test('审计7-开发验收与交接README指导保留每次必核和新版确认', () => {
++  const development = section(read(PRODUCT, '做法/4-一步一票.md'), '## 3 核齐验收三要素');
++  const handoff = section(read(PRODUCT, '做法/5-收尾交接.md'), '## 3 填全 README');
++  for (const text of [development, handoff]) {
++    assert.match(text, /固定回归/);
++    assert.match(text, /本期/);
++    assert.match(text, /样例专属期望/);
++    assert.match(text, /存在.*格式.*每次必核/);
++    assert.match(text, /新数据.*样例.*新版.*确认/);
++    assert.match(text, /未跑.*不适用/);
++  }
++  assert.match(development, /产物.*到位.*accept/);
++});
++
++test('审计8-看图以采用运行表为准并兼容旧materials布局', () => {
++  const graph = section(read(PRODUCT, '做法/共用.md'), '## 2 体检看图');
++  assert.match(graph, /按已采用.*运行表/);
++  assert.match(graph, /旧.*materials.*一致不判错/);
++  assert.match(graph, /inputs.*失配仍判错/);
++  assert.match(graph, /未确认不迁目录/);
++  assert.doesNotMatch(graph, /materials 先归位再画/);
++});
