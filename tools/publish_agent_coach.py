@@ -8,9 +8,12 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
+import re
 import stat
 import sys
+import tempfile
 import uuid
 import zipfile
 from email import policy
@@ -75,7 +78,7 @@ def digest(data):
 
 def check_name(name):
     parts = name.split("/")
-    if (not name or any(c in name for c in '\\:"\r\n\0') or name.startswith("/")
+    if (not name or any(c in name for c in '\\:*?"<>|') or any(ord(c) < 32 for c in name) or name.startswith("/")
             or any(p in ("", ".", "..") or p.rstrip(" .") != p for p in parts)):
         raise Stop("unsafe_member_path")
 
@@ -182,12 +185,159 @@ def multipart(payload, files):
 
 
 def exchange(method, path, token, data=None, content_type=None):
-    raise Stop("submit_unavailable")
+    allowed = {("GET", "/api/v1/auth/me"), ("GET", "/api/v1/skills/agent-coach"),
+               ("GET", "/api/v1/skills/agent-coach/versions"), ("POST", "/api/v1/community/skills/publish")}
+    if (method, path) not in allowed:
+        raise Stop("api_target_invalid")
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/json",
+               "User-Agent": "agent-coach-sidecar-publisher"}
+    if content_type:
+        headers["Content-Type"] = content_type
+    request = urllib.request.Request(API + path, data=data, method=method, headers=headers)
+    opener = urllib.request.build_opener(NoRedirect())
+    try:
+        with opener.open(request, timeout=60) as response:
+            status, raw = response.status, response.read(1024 * 1024 + 1)
+    except urllib.error.HTTPError as error:
+        status, raw = error.code, error.read(1024 * 1024 + 1)
+    except (urllib.error.URLError, OSError, TimeoutError):
+        raise Stop("network_unavailable") from None
+    if type(status) is not int or not 100 <= status <= 599:
+        raise Stop("response_invalid")
+    if len(raw) > 1024 * 1024:
+        raise Stop("response_too_large")
+    try:
+        value = json.loads(raw)
+    except (ValueError, UnicodeError):
+        raise Stop("response_invalid") from None
+    if not isinstance(value, dict):
+        raise Stop("response_invalid")
+    return status, value
+
+
+def load_user():
+    # This function is called only after --submit and never uses environment tokens.
+    try:
+        saved = json.loads(CREDENTIALS.read_text(encoding="utf-8"))
+        user = saved["user"]
+        token = user["token"]
+        if (not isinstance(token, str) or not token.startswith("skh_")
+                or not all(32 < ord(c) < 127 for c in token)):
+            raise Stop("credentials_missing")
+        if user.get("host", "").rstrip("/") != API:
+            raise Stop("credentials_host")
+        if user.get("handle") != OWNER:
+            raise Stop("owner_conflict")
+        if type(user.get("userId")) is not int or user["userId"] <= 0:
+            raise Stop("credentials_missing")
+        return user
+    except (KeyError, TypeError, OSError, UnicodeError, ValueError):
+        raise Stop("credentials_missing") from None
+
+
+def get_json(path, token):
+    status, value = exchange("GET", path, token)
+    if status != 200:
+        raise Stop("preflight_http_rejected")
+    return value
+
+
+def check_existing(detail, payload):
+    skill, owner, namespace = detail.get("skill"), detail.get("owner"), detail.get("namespace")
+    if (not all(isinstance(x, dict) for x in (skill, owner, namespace))
+            or owner.get("handle") != OWNER or namespace.get("handle") != OWNER
+            or namespace.get("publicSlug") != SLUG or namespace.get("canonicalName") != "@" + OWNER + "/" + SLUG
+            or skill.get("slug") != SLUG or skill.get("displayName") != NAME):
+        raise Stop("target_conflict")
+    if skill.get("iconUrl") != ICON:
+        raise Stop("icon_conflict")
+    current = detail.get("latestVersion", {}).get("version")
+    if not isinstance(current, str) or not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", current):
+        raise Stop("public_version_unverified")
+    if tuple(map(int, current.split("."))) >= (1, 17, 0):
+        raise Stop("version_conflict")
+    for key in ("summary", "description", "license", "homepage", "tags"):
+        original = skill.get(key)
+        if key == "tags" and isinstance(original, dict):
+            if key in payload:
+                raise Stop("optional_metadata_unverified")
+            continue  # The public latest-version map is not a writable tags array.
+        if original not in (None, "", []) and payload.get(key) != original:
+            raise Stop("optional_metadata_unverified")
+        if key in payload and original in (None, "", []):
+            raise Stop("optional_metadata_unverified")
+    # No write/preservation contract has been established for these existing fields.
+    if any(skill.get(k) for k in ("category", "subCategories", "summary_zh")):
+        raise Stop("optional_metadata_preservation_unverified")
+
+
+def write_receipt(path, value):
+    fd, filename = tempfile.mkstemp(prefix=".publish-receipt-", suffix=".tmp", dir=path.parent)
+    temp = Path(filename)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            json.dump(value, stream, ensure_ascii=False)
+        os.replace(temp, path)
+    finally:
+        if temp.exists():
+            temp.unlink()
 
 
 def submit(payload, files, body, content_type, metadata_path):
-    # Safe functional baseline: no credential reads or network until implemented and reviewed.
-    raise Stop("submit_unavailable")
+    receipt = metadata_path.parent / (SLUG + "-" + VERSION + ".submit.json")
+    if receipt.exists() or receipt.is_symlink():
+        raise Stop("submission_receipt_exists")
+    user = load_user()
+    token = user["token"]
+    me = get_json("/api/v1/auth/me", token)
+    me = me.get("user", me)
+    user_id = me.get("id", me.get("userId")) if isinstance(me, dict) else None
+    if (not isinstance(me, dict) or me.get("handle") != OWNER
+            or type(user_id) is not int or user_id != user["userId"]):
+        raise Stop("owner_conflict")
+    check_existing(get_json("/api/v1/skills/agent-coach", token), payload)
+    listed = get_json("/api/v1/skills/agent-coach/versions", token)
+    versions = listed.get("versions")
+    if (not isinstance(versions, list) or not versions or listed.get("nextCursor")
+            or any(not isinstance(v, dict) or not isinstance(v.get("version"), str) for v in versions)):
+        raise Stop("versions_unverified")
+    if any(v["version"] == VERSION for v in versions):
+        raise Stop("version_conflict")
+    result = {"status": "submission_unknown", "owner": OWNER, "slug": SLUG, "version": VERSION,
+              "zipSha256": ZIP_SHA, "publicationVerified": False, "reason": "attempt_started"}
+    try:
+        with receipt.open("x", encoding="utf-8") as stream:
+            json.dump(result, stream)
+    except FileExistsError:
+        raise Stop("submission_receipt_exists") from None
+    except OSError:
+        raise Stop("receipt_not_writable") from None
+    code = 3
+    try:
+        status, value = exchange("POST", "/api/v1/community/skills/publish", token, body, content_type)
+        if type(status) is not int:
+            raise Stop("response_invalid")
+        result["httpStatus"] = status
+        response_owner = value.get("owner")
+        if (200 <= status < 300 and type(value.get("skillId")) is int and value["skillId"] > 0
+                and value.get("status") == "pending_review" and value.get("slug") == SLUG
+                and value.get("version") == VERSION and isinstance(response_owner, dict)
+                and response_owner.get("handle") == OWNER):
+            result.update(status="submitted_pending_review", skillId=value["skillId"], reason="response_bound_to_target")
+            code = 0
+        elif status == 409:
+            result.update(status="submission_conflict", reason="http_conflict")
+        else:
+            result["reason"] = "response_not_verified"
+    except Exception:
+        # The POST may have reached the server. Never infer absence from public versions.
+        result["reason"] = "post_result_unknown"
+    try:
+        write_receipt(receipt, result)
+    except OSError:
+        result.update(status="submission_unknown", reason="receipt_update_failed")
+        code = 3
+    return result, code
 
 
 def main(argv=None):

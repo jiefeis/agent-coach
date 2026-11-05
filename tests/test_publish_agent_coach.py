@@ -72,6 +72,7 @@ class PublishTests(unittest.TestCase):
         self.calls = []
         self.post_error = None
         self.http_status = 200
+        self.versions = {"versions": [{"version": "1.16.0"}], "nextCursor": None}
 
     def write_zip(self, files):
         with zipfile.ZipFile(self.zip, "w", zipfile.ZIP_DEFLATED) as z:
@@ -95,7 +96,7 @@ class PublishTests(unittest.TestCase):
         self.calls.append((method, path))
         if method == "GET":
             replies = {"/api/v1/auth/me": self.auth, "/api/v1/skills/agent-coach": self.detail,
-                       "/api/v1/skills/agent-coach/versions": {"versions": [{"version": "1.16.0"}], "nextCursor": None}}
+                       "/api/v1/skills/agent-coach/versions": self.versions}
             return 200, copy.deepcopy(replies[path])
         self.assertEqual(path, "/api/v1/community/skills/publish")
         message = BytesParser(policy=policy.default).parsebytes(
@@ -112,6 +113,10 @@ class PublishTests(unittest.TestCase):
         if self.post_error:
             raise self.post_error
         return self.http_status, copy.deepcopy(self.response)
+
+    def without_unverified_metadata(self):
+        # A hypothetical known-safe contract branch. The actual nonempty snapshot is tested to block.
+        self.detail["skill"].update(category=None, subCategories=[], summary_zh="")
 
     def test_default_preflight_reads_neither_credentials_nor_network_and_preserves_zip(self):
         raw, stamp = self.zip.read_bytes(), self.zip.stat().st_mtime_ns
@@ -181,6 +186,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(all(k not in payload for k in ["license", "homepage", "tags"]))
 
     def test_matching_identity_submits_once_and_only_acknowledges_pending_review(self):
+        self.without_unverified_metadata()
         with mock.patch.object(publisher, "exchange", self.fake_exchange):
             code, result = self.run_cli(submit=True)
         self.assertEqual((code, result["status"]), (0, "submitted_pending_review"))
@@ -220,7 +226,26 @@ class PublishTests(unittest.TestCase):
             code, result = self.run_cli(submit=True)
         self.assertEqual((code, result["reason"]), (1, "credentials_missing"))
 
+    def test_saved_credential_host_or_owner_mismatch_stops_before_network(self):
+        for field, value, reason in [("host", "https://other.invalid", "credentials_host"),
+                                     ("handle", "another_owner", "owner_conflict")]:
+            saved = {"host": "https://api.skillhub.cn", "token": TOKEN, "userId": 7, "handle": OWNER}
+            saved[field] = value
+            self.creds.write_text(json.dumps({"user": saved}), encoding="utf-8")
+            with self.subTest(field=field), mock.patch.object(publisher, "exchange", side_effect=AssertionError("network before credential guard")):
+                code, result = self.run_cli(submit=True)
+                self.assertEqual((code, result["reason"]), (1, reason))
+
+    def test_target_in_public_versions_blocks_even_when_latest_is_older(self):
+        self.without_unverified_metadata()
+        self.versions["versions"].append({"version": "1.17.0"})
+        with mock.patch.object(publisher, "exchange", self.fake_exchange):
+            code, result = self.run_cli(submit=True)
+        self.assertEqual((code, result["reason"]), (1, "version_conflict"))
+        self.assertTrue(all(m != "POST" for m, _ in self.calls))
+
     def test_unknown_response_is_not_success_and_cannot_be_automatically_resubmitted(self):
+        self.without_unverified_metadata()
         self.response = {"skillId": 123, "status": "pending_review", "message": TOKEN}
         with mock.patch.object(publisher, "exchange", self.fake_exchange):
             code, result = self.run_cli(submit=True)
@@ -232,6 +257,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(TOKEN not in self.receipt.read_text(encoding="utf-8"), "credential in receipt")
 
     def test_timeout_leaves_unknown_receipt_without_retry_or_secret_logging(self):
+        self.without_unverified_metadata()
         self.post_error = urllib.error.URLError(TOKEN)
         with mock.patch.object(publisher, "exchange", self.fake_exchange):
             code, result = self.run_cli(submit=True)
@@ -240,6 +266,7 @@ class PublishTests(unittest.TestCase):
         self.assertTrue(TOKEN not in self.receipt.read_text(encoding="utf-8"), "credential in receipt")
 
     def test_5xx_and_409_leave_unknown_or_conflict_without_retry(self):
+        self.without_unverified_metadata()
         for status, expected in [(500, "submission_unknown"), (409, "submission_conflict")]:
             with self.subTest(http=status):
                 self.http_status = status
@@ -253,6 +280,7 @@ class PublishTests(unittest.TestCase):
                 self.receipt.unlink()  # Synthetic fixture only; production never clears uncertain attempts.
 
     def test_wrong_response_target_or_claimed_published_state_is_not_verified_success(self):
+        self.without_unverified_metadata()
         for field, value in [("slug", "other-skill"), ("version", "1.18.0"), ("status", "published")]:
             with self.subTest(field=field):
                 self.response = {"skillId": 123, "status": "pending_review", "slug": SLUG,
@@ -263,6 +291,13 @@ class PublishTests(unittest.TestCase):
                 self.assertEqual((code, result["status"]), (3, "submission_unknown"))
                 self.assertFalse(result.get("publicationVerified", False))
                 self.receipt.unlink()
+
+    def test_actual_snapshot_metadata_without_a_preservation_contract_blocks_submit(self):
+        with mock.patch.object(publisher, "exchange", self.fake_exchange):
+            code, result = self.run_cli(submit=True)
+        self.assertEqual((code, result["reason"]), (1, "optional_metadata_preservation_unverified"))
+        self.assertTrue(all(m != "POST" for m, _ in self.calls))
+        self.assertFalse(self.receipt.exists())
 
     def test_bearer_is_not_forwarded_to_a_cross_origin_redirect(self):
         requests = []
