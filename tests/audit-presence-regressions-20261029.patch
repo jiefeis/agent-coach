@@ -1,0 +1,35 @@
+--- a/脚本/coach-check.test.mjs
++++ b/脚本/coach-check.test.mjs
+@@ -3456,3 +3456,32 @@
+   const [sec] = secOf(c, p, '## 长期记忆');
+   assert.ok(only(sec, '①').some((l) => l.startsWith('✗ ') && l.includes('票 01') && l.includes('放到哪')), sec);
+ });
++
++// ---------- 审计4增补：输入/产出有无是确定矛盾；双向都实跑后再断言 ----------
++for (const [label, field, column] of [['输入', '从哪拿', 3], ['产出', '放到哪', 5]]) {
++  test('审计4-' + label + '有无矛盾不得降未核', () => {
++    const c = coach(), observed = [];
++    for (const direction of ['票无表有', '票有表无']) {
++      const p = sample('教练做的-完成-对照');
++      if (direction === '票无表有') {
++        put(p, auditTicketRel, swap(read(p, auditTicketRel), new RegExp('^' + field + '：.*$', 'm'), field + '：—'));
++      } else {
++        const rf = read(p, 'docs/run-flow.md'), row = rf.split(/\r?\n/).find((line) => /^\|\s*1\s*\|/.test(line));
++        assert.ok(row, '固定样本第1行要在');
++        const cells = row.split('|'); cells[column] = ' — ';
++        put(p, 'docs/run-flow.md', swap(rf, row, cells.join('|')));
++      }
++      const [sec] = secOf(c, p, '## 长期记忆');
++      const lines = only(sec, '①').filter((line) => line.includes('票 01') && line.includes(field));
++      observed.push({ direction, hard: lines.some((line) => line.startsWith('✗ ')), lines });
++    }
++    assert.deepEqual(observed.map((x) => x.hard), [true, true], '有无矛盾两端都必须直接报错，而非未核\n' + JSON.stringify(observed));
++  });
++}
++
++test('审计4-裸文件名产出不能降未核', () => {
++  const c = coach(), p = sample('教练做的-完成-对照');
++  put(p, auditTicketRel, swap(read(p, auditTicketRel), /^放到哪：.*$/m, '放到哪：报告.txt'));
++  const [sec] = secOf(c, p, '## 长期记忆');
++  assert.ok(only(sec, '①').some((line) => line.startsWith('✗ ') && line.includes('票 01') && line.includes('放到哪')), '产出须沿work/output形式，不得把裸文件名列未核\n' + sec);
++});

@@ -1,0 +1,148 @@
+--- a/脚本/coach-check.test.mjs
++++ b/脚本/coach-check.test.mjs
+@@ -747,7 +747,7 @@
+     assert.ok(fs.readFileSync(path.join(PRODUCT, rel), 'utf8').includes('docs/check/archify/<本轮图修订>'), `${rel} 需明确每轮图的新证据身份`);
+   }
+   const sharedSync = fs.readFileSync(path.join(PRODUCT, '做法/共用.md'), 'utf8').split('## 5 同步改动')[1];
+-  assert.match(sharedSync, /已核.*规矩入口读同步规则/, '短引用必须沿已核定的真实项目入口读取，不限定文件名');
++  assert.match(sharedSync, /(?:沿已核入口|已核.*规矩入口)读同步规则/, '短引用必须沿已核定的真实项目入口读取，不限定文件名');
+   const graphRef = sharedSync.split(/\r?\n/).find((line) => /图.*照项目AGENTS“同步改动”节的图规则/.test(line));
+   assert.ok(graphRef, '共用图同步应明确引用已读项目AGENTS中的完整图规则');
+   assert.match(graphRef, /缺段.*最小接入.*授权/, '旧项目缺同步段仍须沿原授权最小接入');
+@@ -3323,3 +3323,136 @@
+     assert.equal(read(p, 'docs/PROJECT_INDEX.md'), index, '同票修复记录不扩写进度');
+   }
+ });
++
++
++// ---------- 审计20261029：真实边界、票号、图源隔离及诊断未核；只用既有夹具与命令 ----------
++for (const linked of [false, true]) test('审计1-普通材料与安全项目内材料联接-' + (linked ? '联接' : '普通'), () => {
++  const c = coach(), p = ready(c, 1);
++  if (linked) {
++    fs.renameSync(path.join(p, 'materials'), path.join(p, 'vault'));
++    fs.symlinkSync(path.join(p, 'vault'), path.join(p, 'materials'), 'junction');
++  }
++  const rel = 'materials/样例-周报.csv', before = fs.readFileSync(path.join(p, rel));
++  const r = run(c, ['init', p]);
++  assert.equal(r.code, 0, r.err);
++  assert.match(first(result(p, 'init')), /｜通过$/);
++  assert.deepEqual(fs.readFileSync(path.join(p, rel)), before, '正常布局也必须保持材料原字节');
++});
++
++test('审计1-材料与报告双联接不得覆写材料原件', () => {
++  const c = coach(), p = ready(c, 1), vault = path.join(p, 'vault');
++  fs.renameSync(path.join(p, 'materials'), vault);
++  fs.symlinkSync(vault, path.join(p, 'materials'), 'junction');
++  fs.rmSync(path.join(p, 'docs', 'check'), { recursive: true });
++  fs.symlinkSync(vault, path.join(p, 'docs', 'check'), 'junction');
++  const original = Buffer.from('ORIGINAL MATERIAL\n', 'utf8'), material = path.join(vault, 'init.txt');
++  fs.writeFileSync(material, original);
++  const r = run(c, ['init', p]);
++  assert.deepEqual(fs.readFileSync(material), original, '报告路径的别名不能写穿材料真实根');
++  assert.notEqual(r.code, 0, '双联接的材料报告目标必须被拒绝');
++});
++
++for (const top of ['work', 'output']) test('审计1-材料真实根位于' + top + '时不能列为产出', () => {
++  const c = coach(), p = example(c), vault = path.join(p, top, '02-材料库');
++  fs.mkdirSync(path.dirname(vault), { recursive: true });
++  fs.renameSync(path.join(p, 'materials'), vault);
++  fs.symlinkSync(vault, path.join(p, 'materials'), 'junction');
++  const originals = fs.readdirSync(vault).map((n) => [n, fs.readFileSync(path.join(vault, n))]);
++  const output = top + '\\02-材料库\\02-汇总.csv';
++  put(p, 'docs/run-flow.md', swap(RF, /work\\02-汇总\.csv/g, output));
++  const [verdict, text] = check(c, p, 'flow');
++  for (const [n, bytes] of originals) assert.deepEqual(fs.readFileSync(path.join(vault, n)), bytes, n);
++  assert.equal(verdict, '不通过', '即使真实根在输出目录，材料仍只读\n' + text);
++  assert.match(text, /^✗ .*materials|^✗ .*材料/m, text);
++});
++
++const auditConfirmHead = '- 第 1 次确认（第 1 版）：2026-09-27｜';
++for (const [label, confirms, want] of [
++  ['同票1', [auditConfirmHead + '票 1 验收单确认'], '通过'],
++  ['同票01', [auditConfirmHead + '票 01 验收单确认'], '通过'],
++  ['仅通用口令', [auditConfirmHead + '就这样跑'], '通过'],
++  ['异票', [auditConfirmHead + '票 2 验收单确认'], '不通过'],
++  ['异票混通用', [auditConfirmHead + '票 2 验收单确认，就这样跑'], '不通过'],
++  ['同票混异票', [auditConfirmHead + '票 1 验收单确认；票 2 验收单确认'], '不通过'],
++  ['无确认', [], '不通过'],
++  ['错版', ['- 第 1 次确认（第 2 版）：2026-09-27｜票 1 验收单确认'], '不通过'],
++]) test('审计2-明确确认票号-' + label, () => {
++  const c = coach(), body = ticket({ versions: [GOOD], confirms }), p = ticketProject(c, body);
++  const before = snap(p);
++  const [verdict, text] = check(c, p, 'accept', ['01']);
++  assert.equal(verdict, want, label + '\n' + text);
++  assert.equal(read(p, 'docs/tickets/01-认出输入.md'), body, '检查不能替换确认原话或票版');
++  const expectedChanges = before.filter((line) => !line.startsWith('docs\\check'));
++  assert.deepEqual(snap(p).filter((line) => !line.startsWith('docs\\check')), expectedChanges, '只准写检查报告');
++});
++
++function auditPictureProject(c) {
++  const p = sample('教练做的-完成-对照');
++  assert.equal(check(c, p, 'flow')[0], '通过');
++  put(p, 'docs/PROJECT_INDEX.md', swap(read(p, 'docs/PROJECT_INDEX.md'), /^当前站：.*$/m, '当前站：4'));
++  put(p, 'AGENTS.md', swap(read(p, 'AGENTS.md'), '共 3 步', '共 99 步'));
++  return p;
++}
++test('审计3-站4有效图源控制例保留独立内容诊断', () => {
++  const c = coach(), p = auditPictureProject(c);
++  const [picture, report] = secOf(c, p, '## 给人看的图');
++  assert.match(picture, /^✓ 图源与运行表一致/m, picture);
++  assert.match(report, /^✗ 内容②：.*99.*3/m, '已触达图源比较且另一项真实问题仍被列出\n' + report);
++});
++for (const [label, malformed] of [
++  ['顶层null', () => null],
++  ['旧形状节点null', () => ({ nodes: [null], edges: [], phases: [], lanes: [] })],
++]) test('审计3-站4错误图源只损坏本项-' + label, () => {
++  const c = coach(), p = auditPictureProject(c), valid = JSON.parse(read(p, J));
++  put(p, J, JSON.stringify(malformed(valid)) + '\n');
++  const [picture, report] = secOf(c, p, '## 给人看的图');
++  assert.ok(marks(picture, '✗').length > 0, '结构错误应局限在图小节，而非吞掉整单诊断\n' + picture);
++  assert.doesNotMatch(picture, /^✓ 图源与运行表一致/m, picture);
++  assert.match(report, /^✗ 内容②：.*99.*3/m, '图源坏了仍须保留独立诊断\n' + report);
++});
++
++const auditTicketRel = 'docs/tickets/01-认出输入.md';
++for (const [label, field, value] of [
++  ['编号与具体样例路径', '从哪拿', 'materials\\价格日报-2026-W38.csv、materials\\价格日报-2026-W37.csv'],
++  ['编号混合路径', '从哪拿', '输入 1、materials\\价格日报-2026-W37.csv'],
++  ['非空措辞差异', '做什么', '认出输入：照已确认清单选择本周及上周日报；缺栏目先询问。依据：输入清单'],
++]) test('审计4-差异未证等价须显式未核-' + label, () => {
++  const c = coach(), p = sample('教练做的-完成-对照');
++  assert.ok(fs.existsSync(path.join(p, 'materials', '价格日报-2026-W38.csv')));
++  assert.ok(fs.existsSync(path.join(p, 'materials', '价格日报-2026-W37.csv')));
++  put(p, auditTicketRel, swap(read(p, auditTicketRel), new RegExp('^' + field + '：.*$', 'm'), field + '：' + value));
++  const [sec] = secOf(c, p, '## 长期记忆'), lines = only(sec, '①');
++  const difference = lines.filter((l) => l.includes('票 01') && l.includes(field));
++  assert.ok(difference.some((l) => l.startsWith('· ') && l.includes('未核')), '无法证明对应关系的差异必须列未核\n' + sec);
++  assert.ok(!difference.some((l) => l.startsWith('✗ ')), '不能只凭字面差异判业务错误\n' + sec);
++  assert.doesNotMatch(lines.join('\n'), /^✓ .*票 01.*三格.*一致/m, '有未核差异不能输出一致\n' + sec);
++  assert.ok(difference.join('\n').includes(value), '须列本票的实际值供补证\n' + sec);
++  assert.match(difference.join('\n'), /docs\\tickets\\01-认出输入\.md/, '须列票的来源位置\n' + sec);
++  assert.match(difference.join('\n'), /docs\\run-flow\.md/, '须列运行表的来源位置\n' + sec);
++});
++
++for (const [label, field, value] of [
++  ['明确不同输入编号', '从哪拿', '输入 2'],
++  ['明确不存在输入编号', '从哪拿', '输入 99'],
++  ['明确不同输出目标', '放到哪', 'output\\01-不同目标.md'],
++]) test('审计4-确定错误仍保红-' + label, () => {
++  const c = coach(), p = sample('教练做的-完成-对照');
++  put(p, auditTicketRel, swap(read(p, auditTicketRel), new RegExp('^' + field + '：.*$', 'm'), field + '：' + value));
++  const [sec] = secOf(c, p, '## 长期记忆');
++  assert.ok(only(sec, '①').some((l) => l.startsWith('✗ ') && l.includes('票 01') && l.includes(field)), sec);
++});
++test('审计4-缺必要字段仍保红', () => {
++  const c = coach(), p = sample('教练做的-完成-对照');
++  put(p, auditTicketRel, swap(read(p, auditTicketRel), /^从哪拿：.*\r?\n/m, ''));
++  const [sec] = secOf(c, p, '## 长期记忆');
++  assert.ok(only(sec, '①').some((l) => l.startsWith('✗ ') && l.includes('票 01') && l.includes('从哪拿')), sec);
++});
++for (const [label, value] of [
++  ['点段', 'work\\.\\01-认出结果.md'],
++  ['通配', 'work\\01-*.md'],
++]) test('审计4-非法输出不能因规范化被放行-' + label, () => {
++  const c = coach(), p = sample('教练做的-完成-对照');
++  put(p, auditTicketRel, swap(read(p, auditTicketRel), /^放到哪：.*$/m, '放到哪：' + value));
++  const [sec] = secOf(c, p, '## 长期记忆');
++  assert.ok(only(sec, '①').some((l) => l.startsWith('✗ ') && l.includes('票 01') && l.includes('放到哪')), sec);
++});
