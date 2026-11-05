@@ -1,7 +1,8 @@
-"""Publish the reviewed agent-coach ZIP with sidecar metadata; offline by default.
+"""Preflight the reviewed agent-coach ZIP with sidecar metadata; offline by default.
 
 Protocol: https://skillhub.cn/ai/release.md and official CLI 2026.8.5.
 Never import the global CLI or rewrite the ZIP. Real submission belongs to the controller.
+The fixed 1.17.0 target was submitted through the browser on 2026-11-05; API resubmission is blocked.
 """
 
 import argparse
@@ -25,6 +26,8 @@ API = "https://api.skillhub.cn"
 OWNER = "user_0fdf85d4"
 SLUG = "agent-coach"
 VERSION = "1.17.0"
+# A known browser submission is authoritative even while the public API still shows 1.16.0.
+TARGET_ALREADY_SUBMITTED = True
 NAME = "Agent 搭建教练"
 ICON = "https://cloudcache.tencent-cloud.com/qcloud/ui/static/other_external_resource/27205dc2-3c4b-4854-85b1-8902f05745a3.png"
 ZIP_SIZE = 97352
@@ -284,6 +287,8 @@ def write_receipt(path, value):
 
 
 def submit(payload, files, body, content_type, metadata_path):
+    if TARGET_ALREADY_SUBMITTED:
+        raise Stop("target_already_submitted")
     receipt = metadata_path.parent / (SLUG + "-" + VERSION + ".submit.json")
     if receipt.exists() or receipt.is_symlink():
         raise Stop("submission_receipt_exists")
@@ -345,7 +350,7 @@ def main(argv=None):
         parser = QuietParser(description=__doc__)
         parser.add_argument("zip", help="Reviewed original ZIP")
         parser.add_argument("--metadata", required=True, help="Sidecar JSON, kept outside the ZIP")
-        parser.add_argument("--submit", action="store_true", help="One submission; requires prior controller review")
+        parser.add_argument("--submit", action="store_true", help="Blocked for the already-submitted fixed 1.17.0 target")
         args = parser.parse_args(argv)
         files = read_package(args.zip)
         payload = read_metadata(args.metadata)

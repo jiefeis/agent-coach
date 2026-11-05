@@ -18,6 +18,7 @@ import zipfile
 spec = importlib.util.spec_from_file_location("publisher", Path(__file__).resolve().parents[1] / "tools/publish_agent_coach.py")
 publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
+PRODUCTION_SUBMISSION_BLOCK = getattr(publisher, "TARGET_ALREADY_SUBMITTED", False)
 
 TOKEN = "skh_SYNTHETIC_NOT_A_REAL_CREDENTIAL_0123456789"
 NAMES = (
@@ -52,7 +53,7 @@ class PublishTests(unittest.TestCase):
             "host": "https://api.skillhub.cn", "token": TOKEN, "userId": 7, "handle": OWNER,
             "loggedInAt": "2026-11-05T00:00:00Z"}}), encoding="utf-8")
         self.patch = mock.patch.multiple(publisher, MEMBERS={n: (len(v), hashlib.sha256(v).hexdigest()) for n, v in self.files.items()},
-                                         CREDENTIALS=self.creds)
+                                         CREDENTIALS=self.creds, TARGET_ALREADY_SUBMITTED=False)
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.write_zip(self.files)
@@ -323,7 +324,9 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((code, result["reason"]), (1, "arguments_invalid"))
 
     def test_known_browser_submission_blocks_before_credentials_even_if_public_version_is_old(self):
-        with mock.patch.object(publisher, "load_user", side_effect=AssertionError("credential read for already submitted version")), \
+        # Restore the real shipped default; reference transport tests disable it only inside fake fixtures.
+        with mock.patch.object(publisher, "TARGET_ALREADY_SUBMITTED", PRODUCTION_SUBMISSION_BLOCK), \
+                mock.patch.object(publisher, "load_user", side_effect=AssertionError("credential read for already submitted version")), \
                 mock.patch.object(publisher, "exchange", side_effect=AssertionError("network for already submitted version")):
             code, result = self.run_cli(submit=True)
         self.assertEqual((code, result["reason"]), (1, "target_already_submitted"))
