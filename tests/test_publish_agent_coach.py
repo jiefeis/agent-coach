@@ -322,6 +322,13 @@ class PublishTests(unittest.TestCase):
         code, result = self.run_cli(extra=("--token", TOKEN))
         self.assertEqual((code, result["reason"]), (1, "arguments_invalid"))
 
+    def test_known_browser_submission_blocks_before_credentials_even_if_public_version_is_old(self):
+        with mock.patch.object(publisher, "load_user", side_effect=AssertionError("credential read for already submitted version")), \
+                mock.patch.object(publisher, "exchange", side_effect=AssertionError("network for already submitted version")):
+            code, result = self.run_cli(submit=True)
+        self.assertEqual((code, result["reason"]), (1, "target_already_submitted"))
+        self.assertFalse(self.receipt.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
