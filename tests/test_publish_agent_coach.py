@@ -77,7 +77,9 @@ class PublishTests(unittest.TestCase):
     def write_zip(self, files):
         with zipfile.ZipFile(self.zip, "w", zipfile.ZIP_DEFLATED) as z:
             for name, data in files.items():
-                z.writestr(name, data)
+                item = zipfile.ZipInfo(name)
+                item.filename = name  # Preserve raw unsafe separators; Windows ZipInfo normalizes its constructor input.
+                z.writestr(item, data, compress_type=zipfile.ZIP_DEFLATED)
         raw = self.zip.read_bytes()
         publisher.ZIP_SIZE = len(raw)
         publisher.ZIP_SHA = hashlib.sha256(raw).hexdigest()
