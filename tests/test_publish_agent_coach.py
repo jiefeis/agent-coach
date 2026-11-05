@@ -332,6 +332,31 @@ class PublishTests(unittest.TestCase):
         self.assertEqual((code, result["reason"]), (1, "target_already_submitted"))
         self.assertFalse(self.receipt.exists())
 
+    def test_accepted_release_manifest_drives_future_synthetic_preflight_without_source_edits(self):
+        version = "1.18.0"  # Synthetic metadata only; no real product or network publication.
+        evidence = self.root / "docs/evidence/accepted/receipt.json"
+        evidence.parent.mkdir(parents=True)
+        package = {"bytes": self.zip.stat().st_size, "sha256": hashlib.sha256(self.zip.read_bytes()).hexdigest(),
+                   "members": {n: {"bytes": len(v), "sha256": hashlib.sha256(v).hexdigest()} for n, v in self.files.items()}}
+        evidence.write_text(json.dumps({"status": "DELIVERED_VERIFIED_WITH_DEFERRED_PLATFORM_VALIDATION", "version": "v1.18",
+                                        "packages": [{"path": str(self.zip), "bytes": package["bytes"], "sha256": package["sha256"]}]}), encoding="utf-8")
+        identity = {"path": str(evidence), "bytes": evidence.stat().st_size,
+                    "sha256": hashlib.sha256(evidence.read_bytes()).hexdigest()}
+        (self.root / "docs/evidence/当前试用候选.json").write_text(json.dumps({
+            "status": "DELIVERED_VERIFIED_WITH_DEFERRED_PLATFORM_VALIDATION", "version": "v1.18",
+            "currentRequestComplete": True, "receipt": identity}), encoding="utf-8")
+        data = dict(self.metadata, version=version, package=package,
+                    acceptance={**identity, "path": "docs/evidence/accepted/receipt.json"},
+                    category="ai-agent", subCategories=["agent-framework", "agent-task-automation", "agent-workflow"],
+                    summaryZh="当前1.17公开中文摘要")
+        self.meta.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        with mock.patch.object(publisher, "WORKSPACE", self.root, create=True), \
+                mock.patch.object(publisher, "load_user", side_effect=AssertionError("credential in preflight")), \
+                mock.patch.object(publisher, "exchange", side_effect=AssertionError("network in preflight")):
+            code, result = self.run_cli()
+        self.assertEqual(code, 0)
+        self.assertEqual((result["status"], result["version"], result["fileCount"]), ("offline_validated", "1.18.0", 24))
+
 
 if __name__ == "__main__":
     unittest.main()
