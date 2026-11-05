@@ -1,8 +1,8 @@
-"""Preflight the reviewed agent-coach ZIP with sidecar metadata; offline by default.
+"""Preflight accepted agent-coach releases from a sidecar manifest; offline by default.
 
 Protocol: https://skillhub.cn/ai/release.md and official CLI 2026.8.5.
 Never import the global CLI or rewrite the ZIP. Real submission belongs to the controller.
-The fixed 1.17.0 target was submitted through the browser on 2026-11-05; API resubmission is blocked.
+Known 1.17.0 was submitted through the browser; it must never be submitted again.
 """
 
 import argparse
@@ -20,46 +20,43 @@ import zipfile
 from email import policy
 from email.parser import BytesParser
 import urllib.error
+import urllib.parse
 import urllib.request
 
 API = "https://api.skillhub.cn"
 OWNER = "user_0fdf85d4"
 SLUG = "agent-coach"
-VERSION = "1.17.0"
-# A known browser submission is authoritative even while the public API still shows 1.16.0.
-TARGET_ALREADY_SUBMITTED = True
 NAME = "Agent 搭建教练"
-ICON = "https://cloudcache.tencent-cloud.com/qcloud/ui/static/other_external_resource/27205dc2-3c4b-4854-85b1-8902f05745a3.png"
-ZIP_SIZE = 97352
-ZIP_SHA = "b67ba49e53df0287ee2815037de82a0d3690d7cddb0a23aa3e2064cab2a1e5b1"
 CREDENTIALS = Path.home() / ".skillhub" / "credentials.json"
-MEMBERS = {
-    'SKILL.md': (1112, 'ae80dd40f98870497fceb059f93e7c17c827e001b811b6478865383ad6aa6489'),
-    'AGENTS.md': (4296, '69beec1a4290df5ad55b7a48f451bed3fd53c08b323d6a1d319cee7f5bb586b7'),
-    'CLAUDE.md': (11, '336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49'),
-    'README.md': (5113, 'aef2e521f018bdfebe20e6ee0107e82efc5001b15e25c2f43ebdb5253dee6a48'),
-    '做法/1-建项目.md': (4300, 'f28a32cd1cb2738011f9aba79ca2fe916d45bc93bcaefae3a506904c36cc2f37'),
-    '模板/AGENTS.模板.md': (11973, '68662efb6545f79ab3665186ff0fcef621a60c805ff2027f1d898d9a6e3a1c0c'),
-    '模板/CLAUDE.模板.md': (11, '336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49'),
-    '模板/README.模板.md': (342, 'ef77073c24bf5790db7668c0e0d1ec1fd2115e6ccf122ecd4c65c3a31659d9c7'),
-    '模板/docs/PROJECT_INDEX.模板.md': (2409, '3cfe6b9e1f2dfbf4423f4c71724a1e9601bef4b694a308be639a1a951aabeb03'),
-    '工具/coach-check.mjs': (128327, 'fc5c035055404bda8db2cec7246bd0d09e7756998ec7c5d15eabca3b1c8fb804'),
-    '做法/共用.md': (5988, 'b9d878716d15945453c8023caafe51b82d24bed4388ae2301c99bae39f8829bb'),
-    '讲解/五站总览.html': (8532, 'd5212dbd8f295c6d68f6c9d5c8a281d57277ba627d31840607ab6bc2e6942f94'),
-    '做法/0-体检.md': (6359, 'ec29bfc8a6a0c157ef29c147078842397a7b9765c6993a7c25f35cfe64eb8bcf'),
-    '做法/0-修复复诊.md': (5819, '5f04833301f17993897c07a060150bca51438cd7fdc42f543d79d9acaa086a3d'),
-    '做法/2-新做-说清需求.md': (4435, '9162d3eb769ac51835a1f7ab3167281d35846d613a0b687378dbb12e1b90bcc7'),
-    '做法/2-SOP-拆开SOP.md': (4131, '0cb0ee095211e3ab957a640a268726e4dcd31be3d10a5c469c17ee3ee869bec2'),
-    '做法/3-排表画图.md': (5397, '9af381115711fdf83d803edb9c98e291b39d70911ec1601f71f639441f6130cf'),
-    '做法/4-一步一票.md': (5520, '436b62b1d2796023366a2fc7ee58c79c66b8e265a8c5cc3df58a897e6bceaee0'),
-    '做法/5-收尾交接.md': (5440, 'bf866e0d8cba079d1b4f505f5abf84cc635c45714a14a2064913d907a1d6a71c'),
-    '做法/架构推荐表.md': (3755, '6656535f5e30499a366489ee8cff0a2e0aa71b244ed8ca056b6b127399895246'),
-    '模板/docs/INTAKE-新做.模板.md': (2366, '64811cadbbab9fd91a1515934f732c18c1a4bf757b9999094927bfa3edb2d5b9'),
-    '模板/docs/INTAKE-SOP.模板.md': (1318, 'e74b0c8cee10564fae7882dbfd9204d780e4791672ff8d52ac2e5529d845d866'),
-    '模板/docs/run-flow.模板.md': (1308, '04c74f28d9ec88e6e1b97ac95b378ce4bada028badfc887f882bdca3b12407ab'),
-    '模板/docs/票.模板.md': (2876, '45b291bf8ffdfbd2fdfd0fc34b1d56fb698edb2c6eabf2bcc824a380df1a9b02'),
-}
-
+WORKSPACE = None  # Tests replace this in memory; production resolves the owning project.
+RECEIPTS = Path("docs/evidence/SkillHubCLI接入-20261105/提交回执")
+PUBLIC_URL = "https://skillhub.cn/skills/" + OWNER + "/" + SLUG
+MEMBER_PATHS = frozenset((
+    'SKILL.md',
+    'AGENTS.md',
+    'CLAUDE.md',
+    'README.md',
+    '做法/1-建项目.md',
+    '模板/AGENTS.模板.md',
+    '模板/CLAUDE.模板.md',
+    '模板/README.模板.md',
+    '模板/docs/PROJECT_INDEX.模板.md',
+    '工具/coach-check.mjs',
+    '做法/共用.md',
+    '讲解/五站总览.html',
+    '做法/0-体检.md',
+    '做法/0-修复复诊.md',
+    '做法/2-新做-说清需求.md',
+    '做法/2-SOP-拆开SOP.md',
+    '做法/3-排表画图.md',
+    '做法/4-一步一票.md',
+    '做法/5-收尾交接.md',
+    '做法/架构推荐表.md',
+    '模板/docs/INTAKE-新做.模板.md',
+    '模板/docs/INTAKE-SOP.模板.md',
+    '模板/docs/run-flow.模板.md',
+    '模板/docs/票.模板.md',
+))
 
 class Stop(Exception):
     """Only constant, non-secret reason codes may be used here."""
@@ -79,6 +76,111 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def version_key(value):
+    if not isinstance(value, str):
+        raise Stop("version_invalid")
+    found = re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?", value)
+    if not found:
+        raise Stop("version_invalid")
+    prerelease = found[4]
+    identifiers = []
+    for part in prerelease.split(".") if prerelease else []:
+        if part.isdigit() and len(part) > 1 and part.startswith("0"):
+            raise Stop("version_invalid")
+        identifiers.append((0, int(part)) if part.isdigit() else (1, part))
+    return tuple(map(int, found.group(1, 2, 3))) + (0 if prerelease else 1, tuple(identifiers))
+
+
+def local_version(value):
+    if not isinstance(value, str):
+        raise Stop("acceptance_invalid")
+    value = value.removeprefix("v")
+    if re.fullmatch(r"[0-9]+\.[0-9]+", value):
+        value += ".0"
+    version_key(value)
+    return value
+
+
+def workspace():
+    if WORKSPACE is not None:
+        return Path(WORKSPACE).resolve()
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "AGENTS.md").is_file() and (parent / "docs/evidence/当前试用候选.json").is_file():
+            return parent
+    raise Stop("workspace_not_found")
+
+
+def json_file(path, reason):
+    try:
+        raw = Path(path).read_bytes()
+        value = json.loads(raw.decode("utf-8-sig"))
+        if not isinstance(value, dict):
+            raise Stop(reason)
+        return value, raw
+    except (OSError, UnicodeError, ValueError):
+        raise Stop(reason) from None
+
+
+def valid_identity(value, allow_empty=False):
+    return (isinstance(value, dict) and set(value) == {"bytes", "sha256"}
+            and type(value["bytes"]) is int and value["bytes"] >= (0 if allow_empty else 1)
+            and isinstance(value["sha256"], str) and re.fullmatch(r"[0-9a-fA-F]{64}", value["sha256"]))
+
+
+def evidence_path(value):
+    if not isinstance(value, str) or not value:
+        raise Stop("acceptance_path")
+    base = workspace()
+    path = Path(value)
+    path = path if path.is_absolute() else base / path
+    resolved = path.resolve()
+    if (path.is_symlink() or path.name.casefold() == "credentials.json"
+            or not resolved.is_relative_to(base) or not resolved.is_relative_to((base / "docs/evidence").resolve())):
+        raise Stop("acceptance_path")
+    return resolved
+
+
+def read_release(filename):
+    path = Path(filename)
+    if path.is_symlink() or path.name.casefold() == "credentials.json":
+        raise Stop("metadata_path")
+    data, _ = json_file(path, "release_invalid")
+    version_key(data.get("version"))
+    package, acceptance = data.get("package"), data.get("acceptance")
+    if (not isinstance(package, dict) or set(package) != {"bytes", "sha256", "members"}
+            or not valid_identity({k: package.get(k) for k in ("bytes", "sha256")})
+            or not isinstance(package["members"], dict) or set(package["members"]) != MEMBER_PATHS
+            or any(not valid_identity(v, allow_empty=True) for v in package["members"].values())):
+        raise Stop("release_package_invalid")
+    if (not isinstance(acceptance, dict) or set(acceptance) != {"path", "bytes", "sha256"}
+            or not valid_identity({k: acceptance.get(k) for k in ("bytes", "sha256")})):
+        raise Stop("acceptance_invalid")
+    # The independent, fixed project pointer is the trust anchor, not a claim in the manifest.
+    pointer_path = evidence_path("docs/evidence/当前试用候选.json")
+    pointer, _ = json_file(pointer_path, "acceptance_invalid")
+    anchor = pointer.get("receipt")
+    if (pointer.get("status") != "DELIVERED_VERIFIED_WITH_DEFERRED_PLATFORM_VALIDATION"
+            or pointer.get("currentRequestComplete") is not True or not isinstance(anchor, dict)
+            or local_version(pointer.get("version")) != data["version"]):
+        raise Stop("acceptance_invalid")
+    if (evidence_path(anchor.get("path")) != evidence_path(acceptance["path"])
+            or anchor.get("bytes") != acceptance["bytes"] or not isinstance(anchor.get("sha256"), str)
+            or anchor["sha256"].lower() != acceptance["sha256"].lower()):
+        raise Stop("acceptance_binding")
+    receipt, raw = json_file(evidence_path(acceptance["path"]), "acceptance_invalid")
+    if (len(raw) != acceptance["bytes"] or digest(raw) != acceptance["sha256"].lower()
+            or receipt.get("status") != "DELIVERED_VERIFIED_WITH_DEFERRED_PLATFORM_VALIDATION"
+            or local_version(receipt.get("version")) != data["version"]):
+        raise Stop("acceptance_invalid")
+    approved = receipt.get("packages")
+    if not isinstance(approved, list) or not any(
+            isinstance(p, dict) and str(p.get("path", "")).lower().endswith(".zip")
+            and p.get("bytes") == package["bytes"] and isinstance(p.get("sha256"), str)
+            and p["sha256"].lower() == package["sha256"].lower() for p in approved):
+        raise Stop("acceptance_package")
+    return data
+
+
 def check_name(name):
     parts = name.split("/")
     if (not name or any(c in name for c in '\\:*?"<>|') or any(ord(c) < 32 for c in name) or name.startswith("/")
@@ -86,12 +188,12 @@ def check_name(name):
         raise Stop("unsafe_member_path")
 
 
-def read_package(filename):
+def read_package(filename, package):
     p = Path(filename)
-    if not p.is_file() or p.is_symlink() or p.stat().st_size != ZIP_SIZE:
+    if not p.is_file() or p.is_symlink() or p.stat().st_size != package["bytes"]:
         raise Stop("zip_identity")
     raw = p.read_bytes()
-    if len(raw) != ZIP_SIZE or digest(raw) != ZIP_SHA:
+    if len(raw) != package["bytes"] or digest(raw) != package["sha256"].lower():
         raise Stop("zip_identity")
     try:
         with zipfile.ZipFile(io.BytesIO(raw)) as z:
@@ -107,39 +209,45 @@ def read_package(filename):
                         or stat.S_ISLNK(item.external_attr >> 16) or item.flag_bits & 1):
                     raise Stop("unsafe_member_path")
                 folded.add(name.casefold())
-                expected = MEMBERS.get(name)
-                if not expected or item.file_size != expected[0]:
+                expected = package["members"].get(name)
+                if not expected or item.file_size != expected["bytes"]:
                     raise Stop("member_identity")
                 data = z.read(item)
-                if len(data) != expected[0] or digest(data) != expected[1]:
+                if len(data) != expected["bytes"] or digest(data) != expected["sha256"].lower():
                     raise Stop("member_identity")
                 files[name] = data
-            if set(files) != set(MEMBERS):
+            if set(files) != MEMBER_PATHS:
                 raise Stop("member_identity")
             return files
     except (zipfile.BadZipFile, RuntimeError, ValueError):
         raise Stop("zip_unreadable") from None
 
 
-def read_metadata(filename):
-    p = Path(filename)
-    if p.is_symlink() or p.name.casefold() == "credentials.json":
-        raise Stop("metadata_path")
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError):
-        raise Stop("metadata_invalid") from None
-    fixed = {"owner": OWNER, "slug": SLUG, "version": VERSION, "displayName": NAME, "iconUrl": ICON}
+def read_metadata(data):
+    fixed = {"owner": OWNER, "slug": SLUG, "displayName": NAME}
     optional = {"summary", "description", "tags", "license", "homepage"}
-    if not isinstance(data, dict) or set(data) - (set(fixed) | optional | {"changelog"}):
+    required = {"version", "iconUrl", "category", "subCategories", "summaryZh", "changelog"}
+    if not isinstance(data, dict) or set(data) - (set(fixed) | optional | required | {"package", "acceptance"}):
         raise Stop("metadata_fields")
     for key, value in fixed.items():
         if data.get(key) != value:
             raise Stop("metadata_" + key)
-    if not isinstance(data.get("changelog"), str) or not data["changelog"].strip():
-        raise Stop("metadata_changelog")
+    version_key(data.get("version"))
+    for key in ("iconUrl", "category", "summaryZh", "changelog"):
+        if not isinstance(data.get(key), str) or not data[key].strip():
+            raise Stop("metadata_" + key)
+    icon = urllib.parse.urlsplit(data["iconUrl"])
+    if icon.scheme != "https" or not icon.hostname or icon.username or icon.password or icon.fragment:
+        raise Stop("metadata_iconUrl")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", data["category"]):
+        raise Stop("metadata_category")
+    subs = data.get("subCategories")
+    if (not isinstance(subs, list) or not 1 <= len(subs) <= 3
+            or any(not isinstance(s, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", s) for s in subs)
+            or len(set(subs)) != len(subs)):
+        raise Stop("metadata_subCategories")
     result = {k: data[k] for k in fixed if k != "owner"}
-    result["changelog"] = data["changelog"]
+    result.update({k: data[k] for k in required})
     for key in optional:
         value = data.get(key)
         if value is None or value == "" or value == []:
@@ -252,13 +360,24 @@ def check_existing(detail, payload):
             or namespace.get("publicSlug") != SLUG or namespace.get("canonicalName") != "@" + OWNER + "/" + SLUG
             or skill.get("slug") != SLUG or skill.get("displayName") != NAME):
         raise Stop("target_conflict")
-    if skill.get("iconUrl") != ICON:
+    if skill.get("iconUrl") != payload["iconUrl"]:
         raise Stop("icon_conflict")
-    current = detail.get("latestVersion", {}).get("version")
-    if not isinstance(current, str) or not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", current):
+    latest = detail.get("latestVersion")
+    if not isinstance(latest, dict):
         raise Stop("public_version_unverified")
-    if tuple(map(int, current.split("."))) >= (1, 17, 0):
+    if version_key(latest.get("version")) >= version_key(payload["version"]):
         raise Stop("version_conflict")
+    subs = skill.get("subCategories")
+    if (not isinstance(skill.get("category"), str) or not skill["category"].strip()
+            or not isinstance(skill.get("summary_zh"), str) or not skill["summary_zh"].strip()
+            or not isinstance(subs, list) or not subs
+            or any(not isinstance(s, dict) or not isinstance(s.get("key"), str) or not s["key"] for s in subs)):
+        raise Stop("original_metadata_missing")
+    expected = {"category": skill["category"], "subCategories": [s["key"] for s in subs],
+                "summaryZh": skill["summary_zh"]}
+    for key, value in expected.items():
+        if payload[key] != value:
+            raise Stop("metadata_conflict_" + key)
     for key in ("summary", "description", "license", "homepage", "tags"):
         original = skill.get(key)
         if key == "tags" and isinstance(original, dict):
@@ -269,9 +388,44 @@ def check_existing(detail, payload):
             raise Stop("optional_metadata_unverified")
         if key in payload and original in (None, "", []):
             raise Stop("optional_metadata_unverified")
-    # No write/preservation contract has been established for these existing fields.
-    if any(skill.get(k) for k in ("category", "subCategories", "summary_zh")):
-        raise Stop("optional_metadata_preservation_unverified")
+
+
+def submission_receipt(version):
+    base = workspace()
+    directory = base / RECEIPTS
+    if not directory.resolve().is_relative_to(base):
+        raise Stop("receipt_path")
+    for parent in (directory, *directory.parents):
+        if parent == base:
+            break
+        if parent.is_symlink() or parent.is_junction():
+            raise Stop("receipt_path")
+    # Build metadata does not create a different SemVer identity or a new attempt slot.
+    return directory / (SLUG + "-" + version.split("+", 1)[0] + ".submit.json")
+
+
+def valid_reply(value, payload, user):
+    if not isinstance(value, dict) or value.get("status") != "pending_review":
+        return False
+    identity = value.get("skillId")
+    if not ((type(identity) is int and identity > 0) or
+            (isinstance(identity, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identity)
+             and "skh_" not in identity.lower() and user["token"] not in identity)):
+        return False
+    for key in ("slug", "version"):
+        if key in value and value[key] != payload[key]:
+            return False
+    if "owner" in value:
+        owner = value["owner"]
+        if isinstance(owner, dict):
+            if (owner.get("handle") != OWNER or
+                    ("id" in owner and (type(owner["id"]) is not int or owner["id"] != user["userId"]))):
+                return False
+        elif owner != OWNER:
+            return False
+    if "publicUrl" in value and value["publicUrl"] != PUBLIC_URL:
+        return False
+    return True
 
 
 def write_receipt(path, value):
@@ -286,10 +440,11 @@ def write_receipt(path, value):
             temp.unlink()
 
 
-def submit(payload, files, body, content_type, metadata_path):
-    if TARGET_ALREADY_SUBMITTED:
+def submit(payload, body, content_type, zip_sha):
+    version = payload["version"]
+    if version_key(version) == version_key("1.17.0"):
         raise Stop("target_already_submitted")
-    receipt = metadata_path.parent / (SLUG + "-" + VERSION + ".submit.json")
+    receipt = submission_receipt(version)
     if receipt.exists() or receipt.is_symlink():
         raise Stop("submission_receipt_exists")
     user = load_user()
@@ -306,11 +461,12 @@ def submit(payload, files, body, content_type, metadata_path):
     if (not isinstance(versions, list) or not versions or listed.get("nextCursor")
             or any(not isinstance(v, dict) or not isinstance(v.get("version"), str) for v in versions)):
         raise Stop("versions_unverified")
-    if any(v["version"] == VERSION for v in versions):
+    if any(version_key(v["version"]) >= version_key(version) for v in versions):
         raise Stop("version_conflict")
-    result = {"status": "submission_unknown", "owner": OWNER, "slug": SLUG, "version": VERSION,
-              "zipSha256": ZIP_SHA, "publicationVerified": False, "reason": "attempt_started"}
+    result = {"status": "submission_unknown", "owner": OWNER, "slug": SLUG, "version": version,
+              "zipSha256": zip_sha, "publicationVerified": False, "reason": "attempt_started"}
     try:
+        receipt.parent.mkdir(parents=True, exist_ok=True)
         with receipt.open("x", encoding="utf-8") as stream:
             json.dump(result, stream)
     except FileExistsError:
@@ -323,12 +479,8 @@ def submit(payload, files, body, content_type, metadata_path):
         if type(status) is not int:
             raise Stop("response_invalid")
         result["httpStatus"] = status
-        response_owner = value.get("owner")
-        if (200 <= status < 300 and type(value.get("skillId")) is int and value["skillId"] > 0
-                and value.get("status") == "pending_review" and value.get("slug") == SLUG
-                and value.get("version") == VERSION and isinstance(response_owner, dict)
-                and response_owner.get("handle") == OWNER):
-            result.update(status="submitted_pending_review", skillId=value["skillId"], reason="response_bound_to_target")
+        if 200 <= status < 300 and valid_reply(value, payload, user):
+            result.update(status="submitted_pending_review", skillId=value["skillId"], reason="submission_acknowledged")
             code = 0
         elif status == 409:
             result.update(status="submission_conflict", reason="http_conflict")
@@ -349,18 +501,20 @@ def main(argv=None):
     try:
         parser = QuietParser(description=__doc__)
         parser.add_argument("zip", help="Reviewed original ZIP")
-        parser.add_argument("--metadata", required=True, help="Sidecar JSON, kept outside the ZIP")
-        parser.add_argument("--submit", action="store_true", help="Blocked for the already-submitted fixed 1.17.0 target")
+        parser.add_argument("--metadata", required=True, help="Accepted sidecar release manifest, kept outside the ZIP")
+        parser.add_argument("--submit", action="store_true", help="One explicitly requested submission; known 1.17.0 is permanently blocked")
         args = parser.parse_args(argv)
-        files = read_package(args.zip)
-        payload = read_metadata(args.metadata)
+        release = read_release(args.metadata)
+        payload = read_metadata(release)
+        files = read_package(args.zip, release["package"])
         body, content_type = multipart(payload, files)
         manifest = [{"path": name, "bytes": len(data), "sha256": digest(data)} for name, data in sorted(files.items())]
         if args.submit:
-            result, code = submit(payload, files, body, content_type, Path(args.metadata))
+            result, code = submit(payload, body, content_type, release["package"]["sha256"].lower())
         else:
             result = {"mode": "preflight", "status": "offline_validated", "owner": OWNER,
-                      "slug": SLUG, "version": VERSION, "iconUrl": ICON, "zipSha256": ZIP_SHA,
+                      "slug": SLUG, "version": payload["version"], "iconUrl": payload["iconUrl"],
+                      "zipSha256": release["package"]["sha256"].lower(),
                       "fileCount": len(files), "contentDigest": digest(json.dumps(manifest, ensure_ascii=False).encode()),
                       "multipartBytes": len(body), "files": manifest}
             code = 0
