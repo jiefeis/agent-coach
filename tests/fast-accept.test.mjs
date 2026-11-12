@@ -39,8 +39,8 @@ test('快跑单口令仅接受当前批次中没有人工停点的纯脚本票',
       '| 2 | ' + opts.second + ' | work\\01-结果.txt | 汇总 | output\\结果.txt | — |',
     ].join('\n'));
     write('docs/tickets/01-认出输入.md', [
-      '## 这一步（照运行表第 1 行）', '怎么做：' + opts.method,
-      '## 验收单（第 ' + opts.version + ' 版）', '### AI 自检',
+      '# 票 01：认出输入', '## 这一步（照运行表第 1 行）', '怎么做：' + opts.method,
+      '## 验收单（第 ' + opts.version + ' 版）', '- 预期值来源：样例清点确认：样例有 12 行', '### AI 自检',
       '- work\\01-结果.txt 含 12', opts.skipBad ? '' : '- work\\01-坏输入\\结果.txt 含 已拦截', '## 确认记录',
       '- 第 1 次确认（第 1 版）：' + opts.date + '｜' + opts.phrase,
     ].join('\n'));
@@ -59,5 +59,5 @@ test('快跑单口令仅接受当前批次中没有人工停点的纯脚本票',
     { phrase: '继续' }, { phrase: '按快跑档推进，就这样跑', scope: '' }, { skipBad: true }, { badResult: '漏过坏输入' },
   ]) verify(false, invalid);
   verify(true, { phrase: '就这样跑', scope: '', who: 'AI看情况', method: 'AI 亲自做' });
-  verify(true, { phrase: '票 01 验收单确认', scope: '' });
+  verify(false, { phrase: '票 01 验收单确认', scope: '' });
 });
