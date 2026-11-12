@@ -1,4 +1,4 @@
-# 一键生成 WorkBuddy v1.13 安装包与 SHA256SUMS.txt（在本地 agent-coach 仓库根目录运行）
+﻿# 一键生成 WorkBuddy v1.13 安装包与 SHA256SUMS.txt（在本地 agent-coach 仓库根目录运行）
 $ErrorActionPreference = "Stop"
 $Ver = "v1.13"
 $Date = "20261112"
