@@ -21,6 +21,16 @@ try {
                 # 打包工具用于维护仓库，技能包只带运行时文件。
                 if ($File.FullName -eq $PSCommandPath) { continue }
                 $Entry = $File.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+                if ($Entry -eq 'LICENSE') { $Entry = 'LICENSE.md' }
+                if ($Entry -eq 'README.md') {
+                    # 仓库许可证叫 LICENSE，安装包使用 SkillHub 接受的 Markdown 文件名。
+                    $Readme = [IO.File]::ReadAllText($File.FullName).Replace("`r`n", "`n").Replace('](LICENSE)', '](LICENSE.md)')
+                    $Member = $Archive.CreateEntry($Entry, 'Optimal')
+                    $Member.LastWriteTime = $File.LastWriteTime
+                    $Writer = [IO.StreamWriter]::new($Member.Open(), [Text.UTF8Encoding]::new($false))
+                    try { $Writer.Write($Readme) } finally { $Writer.Dispose() }
+                    continue
+                }
                 [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($Archive, $File.FullName, $Entry, 'Optimal')
             }
         }

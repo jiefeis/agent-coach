@@ -215,6 +215,10 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
   invoke('powershell.exe',['-NoProfile','-NonInteractive','-Command',
     'Expand-Archive -LiteralPath $env:COACH_TEST_ZIP -DestinationPath $env:COACH_TEST_DEST -ErrorAction Stop'],
     { env:{...psEnv,COACH_TEST_ZIP:zip,COACH_TEST_DEST:skill} });
+  assert.equal(fs.existsSync(path.join(skill, 'LICENSE')), false);
+  assert.deepEqual(fs.readFileSync(path.join(skill, 'LICENSE.md')), fs.readFileSync(path.join(build, 'LICENSE')));
+  const readme = fs.readFileSync(path.join(skill, 'README.md'), 'utf8');
+  assert.ok(readme.includes('](LICENSE.md)') && !readme.includes('](LICENSE)'));
   const tool=path.join(skill,'工具','coach-check.mjs');
   assert.equal(fs.existsSync(path.join(skill,'工具','pack-release.ps1')),false);
   const runCheck=(cmd,num)=>check(dir,cmd,num,true,undefined,tool);
