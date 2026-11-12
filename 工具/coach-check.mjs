@@ -604,6 +604,30 @@ const confirmsOf = (lines) => { const ci = lines.findIndex((l) => l.trim() === '
 // 票里第一条轮次行"### 第 N 轮"的下标，没有回 -1；票模板的占位行（写着"第 K 次"）不算（scan 完成度、内容③共用）
 const roundAt = (lines) => lines.findIndex((l) => /^###\s*第\s*\d+\s*轮/.test(l) && !/第\s*K\s*次/.test(l));
 
+// 快跑只认进度记录中最新批次；每张票仍用自己的确认行和最新版验收单。
+function checkFastBatch(N, version, date, rows, ticket) {
+  const idx = path.join(PROJ, 'docs', 'PROJECT_INDEX.md');
+  const lines = lexists(idx) ? fs.readFileSync(idx, 'utf8').split(/\r?\n/) : [];
+  if (!lines.some((l) => /^当前站：4 一步一票\s*$/.test(l))) return no('快跑只在第 4 站生效');
+  const i = lines.findIndex((l) => l.trim() === '## 已确认');
+  const last = i < 0 ? '' : below(lines, i).map((l) => l.trim()).filter((l) => l.startsWith('- 快跑批次')).at(-1);
+  const batch = /^- 快跑批次：(\d{4}-\d{2}-\d{2})｜(\d{2}@[1-9]\d*(?:、\d{2}@[1-9]\d*)*)｜按快跑档推进$/.exec(last ?? '');
+  if (!batch || batch[1] !== date) return no('最新快跑批次缺失、格式不符或日期与本票确认不一致');
+  const scope = batch[2].split('、').map((item) => item.split('@'));
+  if (!scope.some(([id, v]) => id === pad(N) && v === version)) return no('本票或本版验收单不在最新快跑确认范围内');
+  for (const [j, [id]] of scope.entries()) {
+    const num = Number(id), row = rows?.[num - 1];
+    if ((j && num !== Number(scope[j - 1][0]) + 1) || row?.[0] !== String(num) || row[1] !== 'AI照规矩' || row[5] !== '—')
+      return no('快跑批次必须是连续的 AI照规矩 步骤，每一步都不能有人工停点');
+  }
+  const section = ticket.findIndex((l) => /^## 这一步/.test(l));
+  const how = section < 0 ? [] : below(ticket, section).filter((l) => l.startsWith('怎么做：'));
+  const script = how.length === 1 && /^怎么做：写程序（(scripts\\\d{2}_[^\\/:*?"<>|]+\.js)）\s*$/.exec(how[0]);
+  if (!script || !script[1].startsWith('scripts\\' + pad(N) + '_')) return no('快跑票的“怎么做”须只列本票的独立脚本：写程序（scripts\\NN_短名.js）');
+  const abs = path.join(PROJ, script[1]);
+  if (!inside(PROJ, real(abs)) || !fs.lstatSync(abs, { throwIfNoEntry: false })?.isFile()) no('快跑票的独立脚本缺失或不是项目内普通文件');
+}
+
 // 跑票 N 最后一版验收单里的 AI 自检，再核运行表第 N 步"放到哪"的文件
 function accept() {
   if (!/^\d{1,2}$/.test(extra ?? '')) stop(`票号要写 1 到 2 位数字，现在是"${extra ?? ''}"`);
@@ -621,12 +645,16 @@ function accept() {
   label = `票 ${NN}｜${K ? `第 ${K} 次确认${CV ? `（第 ${CV} 版）` : ''}` : '没有确认记录'}`;
   if (!K) no('票里"## 确认记录"下没有"第 K 次确认（第 V 版）"：验收单还没经学员确认');
   else if (!CV) no(`最后一条确认记录没写"（第 V 版）"，看不出确认的是哪一版：${last.input}`);
+  const rows = table(flowLines(), '运行表', FLOW_HEAD);
+  let fast = false;
   if (K) {
     // 冒号后要有日期和学员原话，原话里要有确认口令"就这样跑"或"票 N 验收单确认"；"（还没有）""待学员确认"这类占位都不算
     const half = (s) => s.replace(/[０-９－／．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
     const [date = '', ...said] = last.input.slice(last[0].length).split(/[｜|]/), q = said.join('｜');
-    if (!/^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)/.test(half(date.trim())) || !/就这样跑|票\s*\d+\s*验收单确认/.test(q) || /<[^<>]*>/.test(q))
-      no(`最后一条确认记录要写成"日期｜学员原话"：日期写成 2026-09-27 这样，原话里要有学员说的"就这样跑"或"票 N 验收单确认"。现在是：${last.input}`);
+    fast = q.trim() === '按快跑档推进';
+    if (fast) checkFastBatch(N, CV, date.trim(), rows, lines);
+    if (!/^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)/.test(half(date.trim())) || (!fast && (q.includes('按快跑档推进') || !/就这样跑|票\s*\d+\s*验收单确认/.test(q))) || /<[^<>]*>/.test(q))
+      no(`最后一条确认记录要写成"日期｜学员原话"：日期写成 2026-09-27 这样，普通确认用"就这样跑"或"票 N 验收单确认"，快跑批次用原话"按快跑档推进"。现在是：${last.input}`);
   }
   const vi = lines.findLastIndex((l) => l.startsWith('## 验收单'));
   if (vi < 0) no('票里没有"## 验收单"');
@@ -639,9 +667,11 @@ function accept() {
     const checks = (end < 0 ? rest : rest.slice(0, end)).map((l) => l.trim()).filter(Boolean);
     if (at < 0) no('最后一版验收单里没有"### AI 自检"');
     else if (!checks.length) no('最后一版验收单的"### AI 自检"一条都没有');
+    if (fast && !checks.some((l) => l.startsWith(`- work\\${NN}-坏输入\\`) && / 含 \S/.test(l)))
+      no('快跑自检缺少本票坏输入结果的内容断言（work\\NN-坏输入\\... 含 拦截原因）');
     checks.forEach(selfCheck);
   }
-  const rows = table(flowLines(), '运行表', FLOW_HEAD), row = rows?.find((r) => r[0] === String(N));
+  const row = rows?.find((r) => r[0] === String(N));
   if (rows && !row) no(`运行表里没有第 ${N} 步`);
   else if (row) for (const x of items(row[4])) {
     // 放到哪是文件就得是普通文件；写成 …\ 的是文件夹，里面至少一份文件
