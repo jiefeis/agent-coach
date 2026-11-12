@@ -2,7 +2,7 @@
 
 **带不写代码的人，按「五站法」把一件日常工作稳妥交给 AI。**
 
-当前版本：**v1.13**（以 `agent-coach` 技能调用） · [下载完整技能包 (.zip)](https://github.com/jiefeis/agent-coach/releases/download/v1.13/agent-coach-v1.13-20261112.zip) · [SHA-256 校验清单](https://github.com/jiefeis/agent-coach/releases/download/v1.13/SHA256SUMS.txt)
+当前版本：**v1.13**（以 `agent-coach` 技能调用） · [下载完整技能包 (.zip)](https://raw.githubusercontent.com/jiefeis/agent-coach/main/releases/v1.13/agent-coach-v1.13-20261112.zip) · [SHA-256 校验清单](https://raw.githubusercontent.com/jiefeis/agent-coach/main/releases/v1.13/SHA256SUMS.txt)
 
 ## 为什么用 Agent Coach？
 
@@ -61,5 +61,7 @@
 * **运行环境**：当前面向 Windows 路径规范设计，需可用 **Node.js 22 或 24**（WorkBuddy 自带运行环境；`工具\coach-check.mjs` 为零外部依赖原生脚本）。
 * **安全边界**：`materials\` 原件全程只读保护；涉及对外发送、付款、删除 `materials` / `work` / `output` 文件的操作一律交由人工执行。
 * **试用提示**：静态检查器通过代表文件契约与断言核对一致，涉及模型主观生成的步骤仍请结合业务证据审阅确认。
+
+在 Git 仓库根目录运行 `.\工具\pack-release.ps1` 可重建安装包和校验清单，输出在 `releases\v1.13\`。
 
 本仓库采用 [MIT License](LICENSE) 开源。
