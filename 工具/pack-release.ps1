@@ -1,8 +1,8 @@
-﻿# 从任意目录运行本脚本，生成仓库 releases\v1.13 下的安装包与校验清单。
+﻿# 从任意目录运行本脚本，生成仓库 releases\v1.18 下的安装包与校验清单。
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$OutDir = Join-Path $RepoRoot 'releases\v1.13'
-$ZipName = 'agent-coach-v1.13-20261112.zip'
+$OutDir = Join-Path $RepoRoot 'releases\v1.18'
+$ZipName = 'agent-coach-v1.18-20261112.zip'
 $ZipPath = Join-Path $OutDir $ZipName
 $SumPath = Join-Path $OutDir 'SHA256SUMS.txt'
 $Include = @('AGENTS.md', 'CLAUDE.md', 'README.md', 'SKILL.md', 'LICENSE', '做法', '工具', '模板', '讲解')

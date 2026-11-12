@@ -4,6 +4,7 @@
 //       node coach-check.mjs files <学员项目完整路径> <站号 1-5>
 //       node coach-check.mjs inputs <学员项目完整路径>
 //       node coach-check.mjs flow <学员项目完整路径>
+//       node coach-check.mjs ticket <学员项目完整路径> <票号>（只核语法）
 //       node coach-check.mjs accept <学员项目完整路径> <票号>
 //       node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>（只读被体检文件夹，只写 报告文件夹\docs\check\scan.txt）
 //       node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入读；只读被体检文件夹，不写任何文件，结果只打在屏幕上）
@@ -49,13 +50,25 @@ const ok = (m) => out.push('✓ ' + m);
 const no = (m) => { bad++; out.push('✗ ' + m); };
 const note = (m) => out.push('· ' + m);
 
+// 目标和材料根都解开已有联接；每次重算，只守串行写入边界。
+function inMaterials(target) {
+  const mat = real(path.join(PROJ, 'materials'));
+  if (inside(mat, target)) return true;
+  if (!inside(PROJ, mat) || !fs.statSync(mat, { throwIfNoEntry: false })?.isDirectory()) return false;
+  return filesUnder(mat).some((file) => {
+    if (!fs.lstatSync(file).isSymbolicLink()) return false;
+    let destination;
+    try { destination = real(file); } catch { return false; } // 断链没有可写目标
+    return inside(destination, target);
+  });
+}
 // 只写进学员项目，不写进 materials，不写进教练文件夹；先核后写
 function guard(rel, isMaterials = false) {
   const t = real(path.join(PROJ, rel));
   if (!inside(PROJ, t)) stop(`不写：${t} 在学员项目外面`);
   if (inside(COACH, t)) stop(`不写：${t} 在教练文件夹里面`);
   if (SRC && inside(SRC, t)) stop(`不写：${t} 在被体检文件夹里面`);
-  if (!isMaterials && inside(path.join(PROJ, 'materials'), t)) stop(`不写：${t} 在 materials 里，materials 只读`);
+  if (!isMaterials && (inside(path.join(PROJ, 'materials'), path.join(PROJ, rel)) || inMaterials(t))) stop(`不写：${t} 在 materials 里，materials 只读`);
   return t;
 }
 const nap = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -64,7 +77,8 @@ function writeIn(rel, text) {
   const target = path.join(PROJ, rel), tmp = `${target}.${process.pid}.tmp`;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   // 先写新文件再换名：目标要是材料的硬链接，换名只换掉这个目录项，材料原件不动
-  fs.writeFileSync(tmp, text);
+  guard(path.relative(PROJ, tmp));
+  fs.writeFileSync(tmp, text, { flag: 'wx' });
   try {
     for (let i = 0; ; i++) {
       try { fs.renameSync(tmp, target); return; } catch (e) {
@@ -90,6 +104,7 @@ function init() {
   const ver = fs.readFileSync(path.join(COACH, 'AGENTS.md'), 'utf8').split(/\r?\n/)[0].match(/v\d+\.\d+/)?.[0] ?? stop('教练 AGENTS.md 第 1 行里没有版本号 vX.Y');
   const tpl = [['AGENTS.模板.md', 'AGENTS.md'], ['CLAUDE.模板.md', 'CLAUDE.md'], ['README.模板.md', 'README.md'], ['docs\\PROJECT_INDEX.模板.md', 'docs\\PROJECT_INDEX.md']]
     .map(([from, to]) => [to, fs.readFileSync(path.join(COACH, '模板', from), 'utf8')]);
+  guard('materials', true);
   if (lexists(PROJ)) {
     if (!fs.statSync(PROJ).isDirectory()) stop(`${PROJ} 是一个文件，不是文件夹`);
     // 判空：不算平台文件夹、docs\check（脚本自己写的）、materials\ 里的原件和 JUNK
@@ -104,7 +119,6 @@ function init() {
   }
   // 先把要写的位置全核一遍，有一处不行就一个文件都不写
   for (const [to] of tpl) guard(to);
-  guard('materials', true);
   guard('docs\\check\\init.txt');
   const fill = (t) => t.replaceAll('{{项目名}}', path.basename(PROJ)).replaceAll('{{日期}}', TODAY).replaceAll('{{教练版本}}', ver);
   fs.mkdirSync(PROJ, { recursive: true });
@@ -240,10 +254,21 @@ function files() {
 
   // materials 基线：第一次通过时写，以后比对。新增只列出；改了、删了判不通过
   const mat = path.join(PROJ, 'materials');
-  const cur = new Map((fs.lstatSync(mat, { throwIfNoEntry: false })?.isDirectory() ? filesUnder(mat) : []).map((f) => {
-    const b = fs.readFileSync(f);
-    return [path.relative(PROJ, f), `${b.length}｜${createHash('sha256').update(b).digest('hex')}`];
-  }));
+  const cur = new Map();
+  const matStat = fs.lstatSync(mat, { throwIfNoEntry: false });
+  if (matStat?.isSymbolicLink()) no('材料目录是联接，不能建立或核对材料基线');
+  let materialSnapshotValid = !matStat?.isSymbolicLink();
+  if (matStat?.isDirectory() && !matStat.isSymbolicLink()) for (const f of filesUnder(mat)) {
+    const rel = path.relative(PROJ, f);
+    if (!fs.lstatSync(f).isFile() || !inside(mat, real(f))) {
+      no(`${rel} 不是材料目录内的普通文件，未读取或登记基线`);
+      materialSnapshotValid = false;
+      continue;
+    }
+    const bytes = fs.readFileSync(f);
+    cur.set(rel, `${bytes.length}｜${createHash('sha256').update(bytes).digest('hex')}`);
+  }
+  if (!materialSnapshotValid) return;
   if (lexists(path.join(PROJ, BASE))) {
     const base = new Map(fs.readFileSync(path.join(PROJ, BASE), 'utf8').split(/\r?\n/).slice(1).filter(Boolean)
       .map((l) => { const [f, ...v] = l.split('｜'); return [f, v.join('｜')]; }));
@@ -421,6 +446,7 @@ function flow() {
       if (x.includes('/') || x.split('\\').some((p, i, a) => p === '.' || p === '..' || /[ .]$/.test(p) || (!p && i < a.length - 1))) no(`第 ${N} 步"放到哪"的 ${x} 要写成 work\\… 或 output\\… 的反斜杠路径，不许有 /、. 或 ..，每段不以点或空格结尾`);
       else if (!/^(work|output)\\[^\\]/.test(x)) no(`第 ${N} 步"放到哪"的 ${x} 要在 work\\ 或 output\\ 下（用反斜杠；materials 只读）`);
       else if (!inside(PROJ, t) || !['work', 'output'].includes(top) || inside(COACH, t)) no(`第 ${N} 步"放到哪"的 ${x} 实际落在 ${t}，要在学员项目的 work\\ 或 output\\ 里（materials 只读）`);
+      else if (inMaterials(t)) no('第 ' + N + ' 步"放到哪"的 ' + x + ' 落在材料真实目录 ' + t + '，materials 只读');
       else if ((fs.statSync(t, { throwIfNoEntry: false })?.nlink ?? 1) > 1) no(`第 ${N} 步"放到哪"的 ${x} 已经有一份，是别的文件的硬链接（写它会改到那份文件），先删掉它`);
       else if (x.startsWith('work\\') && !x.startsWith(`work\\${pad(N)}-`)) no(`第 ${N} 步"放到哪"的 ${x} 在 work\\ 下，文件名要以步号开头：work\\${pad(N)}-…`);
       else outs.push({ N, x, k: t.replace(/\\+$/, '').toLowerCase(), dir: x.endsWith('\\') });
@@ -591,9 +617,9 @@ function swimlane(title, ids, steps, dirs) {
 
 // 第 i 行标题下面的内容，到同级或更高级的下一个标题为止
 function below(lines, i) {
-  const lv = lines[i].match(/^#+/)[0].length;
+  const lv = lines[i].trimStart().match(/^#+/)[0].length;
   let k = i + 1;
-  while (k < lines.length && !((lines[k].match(/^(#+) /)?.[1].length ?? 9) <= lv)) k++;
+  while (k < lines.length && !((lines[k].trimStart().match(/^(#+) /)?.[1].length ?? 9) <= lv)) k++;
   return lines.slice(i + 1, k);
 }
 // 确认记录每行："- 第 K 次确认（第 V 版）：日期｜学员原话"。模板占位行（写着"第 K 次"，或日期、原话那格本身是 <…>）不算（accept、scan 共用）
@@ -604,6 +630,18 @@ const confirmsOf = (lines) => { const ci = lines.findIndex((l) => l.trim() === '
 // 票里第一条轮次行"### 第 N 轮"的下标，没有回 -1；票模板的占位行（写着"第 K 次"）不算（scan 完成度、内容③共用）
 const roundAt = (lines) => lines.findIndex((l) => /^###\s*第\s*\d+\s*轮/.test(l) && !/第\s*K\s*次/.test(l));
 
+function readTicket(number = extra) {
+  if (!/^\d{1,2}$/.test(number ?? '')) stop(`票号要写 1 到 2 位数字，现在是"${number ?? ''}"`);
+  const N = Number(number), NN = pad(N);
+  const dir = path.join(PROJ, 'docs', 'tickets');
+  const names = lexists(dir) ? fs.readdirSync(dir).filter((f) => f.startsWith(NN + '-') && f.endsWith('.md')) : [];
+  if (names.length !== 1) {
+    no(names.length ? `票 ${NN} 有 ${names.length} 份（${names.join('、')}），只能有一份` : `docs\\tickets 里没有票 ${NN}（${NN}-*.md）`);
+    return null;
+  }
+  const lines = fs.readFileSync(path.join(dir, names[0]), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
+  return { N, NN, lines };
+}
 // 快跑只认进度记录中最新批次；每张票仍用自己的确认行和最新版验收单。
 function checkFastBatch(N, version, date, rows, ticket) {
   const idx = path.join(PROJ, 'docs', 'PROJECT_INDEX.md');
@@ -620,6 +658,18 @@ function checkFastBatch(N, version, date, rows, ticket) {
     if ((j && num !== Number(scope[j - 1][0]) + 1) || row?.[0] !== String(num) || row[1] !== 'AI照规矩' || row[5] !== '—')
       return no('快跑批次必须是连续的 AI照规矩 步骤，每一步都不能有人工停点');
   }
+  for (const [id, v] of scope) {
+    if (Number(id) >= N) break;
+    const previous = readTicket(id);
+    if (!previous) return;
+    const confirmation = confirmsOf(previous.lines).at(-1) ?? '';
+    const previousVersion = previous.lines.findLast((l) => l.startsWith('## 验收单'))?.match(/第\s*(\d+)\s*版/)?.[1];
+    const match = confirmation.match(CONFIRM);
+    const permission = match && confirmation.slice(match[0].length).trim().replace(/\s*[|｜]\s*/, '｜');
+    if (v !== previousVersion || match?.[2] !== v || permission !== date + '｜按快跑档推进') {
+      return no(`快跑在票 ${id} 前截断：前序票缺本批次运行授权或仅定稿`);
+    }
+  }
   const section = ticket.findIndex((l) => /^## 这一步/.test(l));
   const how = section < 0 ? [] : below(ticket, section).filter((l) => l.startsWith('怎么做：'));
   const script = how.length === 1 && /^怎么做：写程序（(scripts\\\d{2}_[^\\/:*?"<>|]+\.js)）\s*$/.exec(how[0]);
@@ -628,74 +678,178 @@ function checkFastBatch(N, version, date, rows, ticket) {
   if (!inside(PROJ, real(abs)) || !fs.lstatSync(abs, { throwIfNoEntry: false })?.isFile()) no('快跑票的独立脚本缺失或不是项目内普通文件');
 }
 
-// 跑票 N 最后一版验收单里的 AI 自检，再核运行表第 N 步"放到哪"的文件
-function accept() {
-  if (!/^\d{1,2}$/.test(extra ?? '')) stop(`票号要写 1 到 2 位数字，现在是"${extra ?? ''}"`);
-  const N = Number(extra), NN = pad(N);
-  label = `票 ${NN}`;
-  const dir = path.join(PROJ, 'docs', 'tickets');
-  const names = lexists(dir) ? fs.readdirSync(dir).filter((f) => f.startsWith(NN + '-') && f.endsWith('.md')) : [];
-  if (names.length !== 1) stop(names.length ? `票 ${NN} 有 ${names.length} 份（${names.join('、')}），只能有一份` : `docs\\tickets 里没有票 ${NN}（${NN}-*.md）`);
-  const lines = fs.readFileSync(path.join(dir, names[0]), 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/);
-  // 取最后一条确认行
-  const confirmLines = confirmsOf(lines);
-  for (const l of confirmLines) if (!CONFIRM.test(l)) no(`确认记录这一行写法不认得：${l}（要写成"- 第 K 次确认（第 V 版）：日期｜学员原话"）`);
-  const last = confirmLines.map((l) => l.match(CONFIRM)).filter(Boolean).at(-1);
-  const [, K, CV] = last ?? [];
-  label = `票 ${NN}｜${K ? `第 ${K} 次确认${CV ? `（第 ${CV} 版）` : ''}` : '没有确认记录'}`;
-  if (!K) no('票里"## 确认记录"下没有"第 K 次确认（第 V 版）"：验收单还没经学员确认');
-  else if (!CV) no(`最后一条确认记录没写"（第 V 版）"，看不出确认的是哪一版：${last.input}`);
+// 验收单只有两种格式：全量平铺，或两个非空的四级断言块。
+function assertionGroups(lines) {
+  const flat = [], fixed = [], current = [];
+  let target = flat, baseline = '', sawCurrent = false;
+  for (const line of lines.map((l) => l.trim()).filter(Boolean)) {
+    const header = /^#### 固定基线断言（绑定参数：([^<>（）]+)）$/.exec(line);
+    if (header) {
+      if (baseline) no('固定基线断言重复');
+      baseline = header[1].trim();
+      if (/\.{3}|…|待填/.test(baseline)) no('绑定参数须填写真实基线值');
+      target = fixed;
+    } else if (line === '#### 当期守恒断言（每次必核）') {
+      if (sawCurrent) no('当期守恒断言重复');
+      sawCurrent = true;
+      target = current;
+    } else {
+      const assertion = parseSelfCheck(line);
+      if (assertion) target.push(assertion);
+    }
+  }
+  if (baseline || sawCurrent) {
+    if (!baseline || !sawCurrent || !fixed.length || !current.length || flat.length)
+      no('双轨验收须各有一块非空的固定基线断言和当期守恒断言，不能混用平铺断言');
+  } else if (!flat.length) no('AI 自检缺少有效断言');
+  return { baseline, fixed, current: baseline || sawCurrent ? current : flat };
+}
+
+function checkValueSource(N, row, body) {
+  const entries = body.filter((l) => /^- 预期值来源[：:]/.test(l));
+  const source = entries.length === 1 ? entries[0].replace(/^- 预期值来源[：:]\s*/, '').trim() : '';
+  const match = /^(样例清点确认|旧成品对照|SOP硬阈值|边界小样核定|AI同源试算（未做独立口径核验）)[：:](.+)$/.exec(source);
+  const why = match?.[2]?.trim() ?? '';
+  const calculated = /汇总|合计|剔除|筛选|差值|平均|占比|率|折算|排名|星标/.test(row?.join(' ') ?? '');
+  if (!why || /[<>]|\.{3}|…|待填|待确认/.test(why) || (N !== 1 && calculated && match[1] === '样例清点确认')) {
+    no('计算或筛选步骤缺少独立真值来源（旧成品对照 / SOP硬阈值 / 边界小样核定，或显式标明 AI同源试算未核风险）；清点步骤也须填写具体来源');
+  }
+}
+
+function ticketContract() {
+  label = '票 ' + pad(Number(extra));
+  const data = readTicket();
+  if (!data) return null;
+  const { N, NN, lines } = data;
   const rows = table(flowLines(), '运行表', FLOW_HEAD);
-  let fast = false;
-  if (K) {
-    // 冒号后要有日期和学员原话，原话里要有确认口令"就这样跑"或"票 N 验收单确认"；"（还没有）""待学员确认"这类占位都不算
-    const half = (s) => s.replace(/[０-９－／．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-    const [date = '', ...said] = last.input.slice(last[0].length).split(/[｜|]/), q = said.join('｜');
-    fast = q.trim() === '按快跑档推进';
-    if (fast) checkFastBatch(N, CV, date.trim(), rows, lines);
-    if (!/^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)/.test(half(date.trim())) || (!fast && (q.includes('按快跑档推进') || !/就这样跑|票\s*\d+\s*验收单确认/.test(q))) || /<[^<>]*>/.test(q))
-      no(`最后一条确认记录要写成"日期｜学员原话"：日期写成 2026-09-27 这样，普通确认用"就这样跑"或"票 N 验收单确认"，快跑批次用原话"按快跑档推进"。现在是：${last.input}`);
-  }
-  const vi = lines.findLastIndex((l) => l.startsWith('## 验收单'));
-  if (vi < 0) no('票里没有"## 验收单"');
-  else {
-    const V = lines[vi].match(/第\s*(\d+)\s*版/)?.[1];
-    if (!V) no(`最后一版验收单的标题没写"（第 V 版）"：${lines[vi]}`);
-    else if (CV && Number(CV) !== Number(V)) no(`最后一条确认的是第 ${CV} 版，验收单最新是第 ${V} 版：${Number(CV) < Number(V) ? '最新一版还没经学员确认' : '版号对不上'}`);
-    const body = below(lines, vi), at = body.findIndex((l) => l.trim() === '### AI 自检');
-    const rest = at < 0 ? [] : body.slice(at + 1), end = rest.findIndex((l) => l.startsWith('#'));
-    const checks = (end < 0 ? rest : rest.slice(0, end)).map((l) => l.trim()).filter(Boolean);
-    if (at < 0) no('最后一版验收单里没有"### AI 自检"');
-    else if (!checks.length) no('最后一版验收单的"### AI 自检"一条都没有');
-    if (fast && !checks.some((l) => l.startsWith(`- work\\${NN}-坏输入\\`) && / 含 \S/.test(l)))
-      no('快跑自检缺少本票坏输入结果的内容断言（work\\NN-坏输入\\... 含 拦截原因）');
-    checks.forEach(selfCheck);
-  }
   const row = rows?.find((r) => r[0] === String(N));
-  if (rows && !row) no(`运行表里没有第 ${N} 步`);
-  else if (row) for (const x of items(row[4])) {
+  if (!row || !['AI照规矩', 'AI看情况'].includes(row[1])) no(`运行表第 ${N} 步缺失或为人工步骤，不应出票`);
+  if (Number(lines[0]?.match(/^# 票\s*(\d+)\s*[：:]/)?.[1]) !== N) no('票标题步号须与运行表和文件名一致');
+  const step = lines.find((l) => /^## 这一步(?:$|[（( ])/.test(l));
+  const stepNumber = step?.match(/第\s*(\d+)\s*行/)?.[1];
+  if (!step || (stepNumber && Number(stepNumber) !== N)) no('缺少对应运行表步号的“## 这一步”');
+  const vi = lines.findLastIndex((l) => l.startsWith('## 验收单'));
+  const version = lines[vi]?.match(/^## 验收单[（(]第\s*([1-9]\d*)\s*版[）)]\s*$/)?.[1];
+  if (!version) no('缺少有效的最新版验收单标题');
+  const body = vi < 0 ? [] : below(lines, vi);
+  const at = body.findIndex((l) => l.trim() === '### AI 自检');
+  if (at < 0 || body.filter((l) => l.trim() === '### AI 自检').length !== 1) no('最新版验收单需要一节“### AI 自检”');
+  checkValueSource(N, row, at < 0 ? body : body.slice(0, at));
+  const groups = assertionGroups(at < 0 ? [] : below(body, at));
+  const hasBad = groups.current.some((c) => c.p.startsWith(`work\\${NN}-坏输入\\`) && c.verb === '含');
+  if (N === 1 && !hasBad) no('票 01 缺少坏输入结果的内容断言');
+  return { ...data, rows, row, version, groups, hasBad };
+}
+
+function ticket() {
+  const data = ticketContract();
+  if (data) label = `票 ${data.NN}｜第 ${data.version ?? '?'} 版｜语法预检`;
+  out.push('语法预检不代表已有批准、产物或业务验收结果。');
+}
+
+function verifyRunPermission(data) {
+  const { N, NN, lines, rows, version, hasBad } = data;
+  const confirmations = confirmsOf(lines);
+  for (const l of confirmations) if (!CONFIRM.test(l)) no(`确认记录格式不符：${l}`);
+  const last = confirmations.at(-1) ?? '';
+  const match = CONFIRM.exec(last);
+  if (!match) return no('没有有效的本票确认记录');
+  const [, k, cv] = match;
+  label = `票 ${NN}｜第 ${k} 次确认（第 ${cv ?? '?'} 版）`;
+  if (!cv || cv !== version) no('最后确认的验收单版号与最新版不符');
+  const [date = '', ...words] = last.slice(match[0].length).trim().split(/\s*[｜|]\s*/);
+  const quote = words.join('｜').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const normalizedDate = date.replace(/[０-９－／．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  if (!/^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)$/.test(normalizedDate) || /<[^<>]*>/.test(quote)) no('确认记录须写日期和真实原话');
+  const namedTickets = [...quote.matchAll(/票\s*(\d+)/g)].map((m) => Number(m[1]));
+  if (namedTickets.some((n) => n !== N)) return no('最后一条确认记录点名了其它票号，不能代认本票');
+  if (quote.includes('仅定稿·未获准运行') || (/票\s*\d+\s*验收单确认/.test(quote) && !quote.includes('就这样跑') && !quote.includes('按快跑档推进')))
+    return no(`票 ${NN} 当前仅为验收单定稿（未获准运行），须获运行授权并实跑后再验收`);
+  if (quote === '按快跑档推进') {
+    checkFastBatch(N, cv, date.trim(), rows, lines);
+    if (!hasBad) no('快跑缺少本票当期坏输入结果的内容断言');
+  } else {
+    // 单票许可是明确的口令。否定句、引用和假设句不能仅因含有这四个字而放行。
+    const singleRun = /^(?:票\s*\d+\s*(?:验收单确认)?\s*[，,：:｜|]?\s*)?就这样跑[。！!]?$/u;
+    if (!singleRun.test(quote.trim())) no('当前验收单没有明确的单票运行许可或合法快跑许可');
+  }
+}
+
+function currentParameter(row) {
+  const output = items(row[4])[0];
+  if (!output) return '';
+  const abs = path.join(PROJ, output);
+  if (!inside(PROJ, real(abs)) || inMaterials(real(abs)) || !fs.statSync(abs, { throwIfNoEntry: false })?.isFile()) return '';
+  const first = fs.readFileSync(abs, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0];
+  const m = /^(参数[｜|])?([^：:｜|]+)[：:]\s*([^：:｜|]+)\s*$/.exec(first);
+  if (!m) return '';
+  // 无“参数｜”标识的旧产物，仅把输入清单中的参数名或常用周期/批次名当作参数。
+  const declared = (flowLines() ?? []).join('\n').includes('<' + m[2].trim() + '>');
+  const period = /^(?:报告周|报告期|账期|周次|周期|批次|期次|月份|日期|年份)$/.test(m[2].trim());
+  return (m[1] || declared || period) ? m[3].trim() : '';
+}
+
+function baselineStatus(lines) {
+  const where = lines.findLastIndex((l) => l.trim() === '## 结果');
+  if (where < 0) return false;
+  const results = below(lines, where);
+  const round = results.findLastIndex((l) => /^### 第\s*\d+\s*轮/.test(l));
+  return round >= 0 && below(results, round).some((l) => !/[<>［］]/.test(l) && /固定基线.*(?:未跑|不适用|已回归通过|实跑通过)/.test(l));
+}
+
+function accept() {
+  const data = ticketContract();
+  if (!data) return;
+  verifyRunPermission(data);
+  if (bad || !data.row) return;
+  const { fixed, current, baseline } = data.groups;
+  const param = baseline ? currentParameter(data.row) : '';
+  if (!param || param === baseline) fixed.forEach(selfCheck);
+  else {
+    const outputs = items(data.row[4]);
+    const measured = current.some((c) => c.verb === '含' && outputs.some((p) =>
+      c.rel === p || (p.endsWith('\\') && c.rel.startsWith(p))));
+    if (!measured || !data.hasBad) no('换参运行的当期守恒块须核产物内容与本票坏输入拦截结果');
+    if (!baselineStatus(data.lines)) no('换参运行须在结果最新一轮记录固定基线状态（实跑通过 / 代码未变未跑）');
+    note(`主产物参数 ${param}，本次仅核当期守恒断言，绑定参数 ${baseline} 的固定值不计作本期实跑`);
+  }
+  current.forEach(selfCheck);
+  checkOutputs(data.row);
+  out.push('这只是 AI 自检，结论由你判');
+}
+
+function checkOutputs(row) {
+  for (const x of items(row[4])) {
     // 放到哪是文件就得是普通文件；写成 …\ 的是文件夹，里面至少一份文件
-    const abs = path.join(PROJ, x), st = fs.statSync(abs, { throwIfNoEntry: false });
+    const abs = path.join(PROJ, x), destination = real(abs);
+    if (!/^(work|output)\\/.test(x) || !inside(PROJ, destination) || inMaterials(destination)) {
+      no(`放到哪 ${x} 超出产物目录或落入材料目录`);
+      continue;
+    }
+    const st = fs.statSync(abs, { throwIfNoEntry: false });
     if (!st) no(`放到哪 ${x} 还没有`);
     else if (st.isFile() && st.nlink > 1) no(`放到哪 ${x} 是别的文件的硬链接，写它会改到那份文件`);
     else if (x.endsWith('\\') ? st.isDirectory() && filesUnder(abs).length : st.isFile()) ok(`放到哪 ${x} 在`);
     else if (x.endsWith('\\')) no(`放到哪 ${x} 是空文件夹或不是文件夹`);
     else no(st.isDirectory() ? `放到哪 ${x} 不是普通文件，是个文件夹：运行表里文件夹要写成 ${x}\\（末尾加 \\）；是文件的话，程序要写成普通文件` : `放到哪 ${x} 不是普通文件`);
   }
-  out.push('这只是 AI 自检，结论由你判');
 }
 // AI 自检只认三种写法：- 有 <路径>｜- <路径> 含 <文字>｜- <路径> 不含 <文字>；路径相对学员项目根目录、用反斜杠
-function selfCheck(l) {
+function parseSelfCheck(l) {
   let m, p, verb, text;
   if ((m = l.match(/^- 有 (\S.*)$/))) [p, verb] = [m[1], '有'];
   else if ((m = l.match(/^- (\S.*?) (不含|含) (\S.*)$/))) [, p, verb, text] = m;
   // 文字两边成对的引号、尖括号先去掉一层：小模型常写成 不含 "价格周报"
   if (text?.length > 2 && ['""', '“”', '「」', '<>', "''", '‘’', '``', '【】', '《》'].includes(text[0] + text.at(-1))) text = text.slice(1, -1);
   const rel = p?.replace(/\\$/, '');
-  if (!verb || /[/:*?"<>|]/.test(p) || rel.split('\\').some((x) => !x || x === '.' || x === '..')) {
+  if (!verb || /^\[[ xX]\]/.test(p) || /[/:*?"<>|]/.test(p) || rel.split('\\').some((x) => !x || x === '.' || x === '..')) {
     no(`写法不认得：${l}（只认"有 路径""路径 含 文字""路径 不含 文字"，路径相对项目根目录、用反斜杠）`);
     return;
   }
+  return { p, rel, verb, text };
+}
+function selfCheck(check) {
+  const { p, rel, verb, text } = check;
   const abs = path.join(PROJ, rel);
   if (!inside(PROJ, real(abs))) { no(`${p} 在学员项目外面`); return; }
   const st = fs.statSync(abs, { throwIfNoEntry: false });
@@ -798,6 +952,7 @@ const oldMade = (f) => { const r = f.rel.toLowerCase(), b = path.basename(r);
 function kindOf(t) {
   const idx = indexOf(t);
   const cur = idx?.text?.match(/^当前站：[ \t]*(.*)/m)?.[1].trim();
+  if (cur === '已结束（采用）') return '教练做的 搭建完成';
   if (cur !== undefined) return `教练做的 ${/^\d/.test(cur) ? `第 ${cur[0]} 站` : /^(搭建完成|已结束)/.exec(cur)?.[1] ?? '第 ? 站'}`;
   const old = t.files.some((f) => /\.(md|txt)$/i.test(f.rel) && f.text?.match(OLD_RE));
   const step = t.files.some((f) => f.rel.toLowerCase() === 'runs\\simple-run.md') ? 4 : Math.max(0, ...oldSteps(idx?.text).map((s) => OLD_STEP[s.k][1]));
@@ -1130,22 +1285,48 @@ function content(t, kind) {
   const nos = (xs) => xs.map((x) => pad(x.N)).join('、');
   if (!rows || !inRows) note(`内容①②：${rf ? 'docs\\run-flow.md 没读内容或表的格式没过' : '还没有 docs\\run-flow.md'}，不比`);
   else {
-    const steps = stepsOf(rows), ids = inRows.map((r) => inputId(r[0])).filter(Boolean), errs = [];
+    const steps = stepsOf(rows), ids = inRows.map((r) => inputId(r[0])).filter(Boolean), errs = [], pending = [];
+    // 只分类可证的差异，不把输入编号展开成固定样例，也不为判等价追联接。
+    const pathLike = (x) => x.includes('\\') || /^(?:[a-z]:|\/|\.{1,2}\/|(?:materials|inputs|work|output|docs|scripts)\/)/i.test(x);
+    const invalidPath = (x) => pathLike(x) && (/[/:*?"<>|]/.test(x) || x.startsWith('\\') ||
+      x.replace(/\\$/, '').split('\\').some((p) => !p || p === '.' || p === '..' || /[ .]$/.test(p)));
+    const pathKey = (x) => path.win32.normalize(x).toLowerCase();
+    const linked = (x) => t.links.some((rel) => pathKey(x) === pathKey(rel) || pathKey(x).startsWith(pathKey(rel).replace(/\\$/, '') + '\\'));
+    const signature = (xs, key) => [...new Set(xs.map(key))].sort().join('\0');
     for (const { f, N, tl } of tickets) {
-      const h = tl.findIndex((l) => l.startsWith('## 这一步')), row = rows[N - 1];
-      if (h < 0) { errs.push(`票 ${pad(N)} 没有"## 这一步"（${f.rel}）`); continue; }
-      if (!row) { errs.push(`票 ${pad(N)}：运行表没有第 ${N} 步（${f.rel}）`); continue; }
+      const h = tl.findIndex((l) => l.startsWith('## 这一步')), row = rows.find((r) => r[0] === String(N));
+      if (h < 0) { errs.push('票 ' + pad(N) + ' 没有"## 这一步"（' + f.rel + '）'); continue; }
+      if (!row) { errs.push('票 ' + pad(N) + '：运行表没有第 ' + N + ' 步（' + f.rel + '）'); continue; }
       const body = below(tl, h);
       for (const [k, c] of [['从哪拿', 2], ['做什么', 3], ['放到哪', 4]]) {
-        const at = body.findIndex((l) => new RegExp(`^${k}[：:]`).test(l.trim())), mine = at < 0 ? null : body[at].trim().slice(k.length + 1).trim();
+        const at = body.findIndex((l) => new RegExp('^' + k + '[：:]').test(l.trim())), mine = at < 0 ? null : body[at].trim().slice(k.length + 1).trim();
+        const where = at < 0 ? f.rel + ' 的"## 这一步"里没写' : f.rel + ' 第 ' + (h + at + 2) + ' 行';
+        if (at < 0 || !mine || !row[c]) { errs.push('票 ' + pad(N) + '"' + k + '"缺必要值或与运行表第 ' + N + ' 步不同（' + where + '）'); continue; }
+        const refs = items(mine), wanted = items(row[c]);
+        if (k !== '做什么' && [...refs, ...wanted].some((x) => invalidPath(x) || (k === '放到哪' && !/^(work|output)\\[^\\]/.test(x)))) {
+          errs.push('票 ' + pad(N) + '"' + k + '"有非法路径或范围：' + mine + '；运行表是 ' + row[c] + '（' + where + '）');
+          continue;
+        }
         if (mine === row[c]) continue;
-        const where = at < 0 ? `${f.rel} 的"## 这一步"里没写` : `${f.rel} 第 ${h + at + 2} 行`;
-        errs.push(k === '做什么' || at < 0 ? `票 ${pad(N)}"${k}"和运行表第 ${N} 步不同（${where}）` : `票 ${pad(N)}"${k}"是 ${mine}，运行表第 ${N} 步是 ${row[c]}（${where}）`);
+        const differentPresence = k !== '做什么' && ((refs.length > 0) !== (wanted.length > 0));
+        const namedInputs = k === '从哪拿' && refs.length && wanted.length && [...refs, ...wanted].every((x) => inputId(x));
+        const badInput = k === '从哪拿' && refs.some((x) => inputId(x) && !ids.includes(inputId(x)));
+        const futureOutput = k === '从哪拿' && refs.some((x) => !inputId(x) && steps.slice(N - 1).some((step) => step.to.includes(x)));
+        const otherInputs = namedInputs && signature(refs, inputId) !== signature(wanted, inputId);
+        const otherOutputs = k === '放到哪' && refs.length && wanted.length && [...refs, ...wanted].every(pathLike) &&
+          ![...refs, ...wanted].some(linked) && signature(refs, pathKey) !== signature(wanted, pathKey);
+        if (differentPresence || badInput || futureOutput || otherInputs || otherOutputs) {
+          errs.push('票 ' + pad(N) + '"' + k + '"是 ' + mine + '，运行表第 ' + N + ' 步是 ' + row[c] + '（' + where + '）');
+        } else {
+          pending.push('票 ' + pad(N) + '"' + k + '"差异未核：票值「' + mine + '」（' + where + '）；运行表值「' + row[c] + '」（docs\\run-flow.md 运行表第 ' + N + ' 步）；请沿既有流程和输入依据补证');
+        }
       }
     }
     steps.forEach((s, j) => errs.push(...fromErrs(steps, j + 1, ids).map((m) => '运行表' + m)));
     errs.forEach((m) => no('内容①：' + m));
-    if (!errs.length) ok(`内容①：${tickets.length ? `票 ${nos(tickets)} 的"这一步"三格和运行表同一行一致；` : '还没有票；'}运行表每步"从哪拿"都接得上`);
+    pending.forEach((m) => note('内容①：' + m));
+    if (!errs.length && !pending.length) ok('内容①：' + (tickets.length ? '票 ' + nos(tickets) + ' 的"这一步"三格和运行表同一行一致；' : '还没有票；') + '运行表每步"从哪拿"都接得上');
+    else if (!errs.length) note('内容①：上列差异尚未核同；运行表每步"从哪拿"已接上');
     const al = byLow.get('agents.md')?.text?.split(/\r?\n/) ?? [], k = al.findIndex((l) => /共\s*\d+\s*步/.test(l));
     const n = k < 0 ? 0 : Number(al[k].match(/共\s*(\d+)\s*步/)[1]);
     if (k < 0) note('内容②：AGENTS.md 里没写"共 N 步"，不比');
@@ -1212,8 +1393,8 @@ function pics(t, kind, starts, fl) {
   const cap = (xs, what, n = 10) => { if (xs.length > n) skip.push(`${what}另有 ${xs.length - n} 份没列`); return xs.slice(0, n); };
   const view = t.files.filter((f) => /\.(html?|svg|png|jpe?g)$/i.test(f.rel) && !/^docs\\check\\/i.test(f.rel));
   const srcs = t.files.filter((f) => /\.mmd$/i.test(f.rel) || (/\.json$/i.test(f.rel) && /"diagram_type"\s*:/.test(f.text ?? '')) || (/\.md$/i.test(f.rel) && /^\s*```\s*mermaid/im.test(f.text ?? '')));
-  const mine = kind.startsWith('教练做的') ? byLow.get(L(SELF)) : undefined;
-  if (st && st <= 3 && !view.length && !srcs.length) { note(`还没到出图那站（当前站 ${st}），不判图`); return []; }
+  const mine = byLow.get(L(SELF));
+  if (st && st <= 3 && !mine && !view.length && !srcs.length) { note(`还没到出图那站（当前站 ${st}），不判图`); return []; }
   const words = [...t.files.filter((f) => path.basename(L(f.rel)) === 'run-flow.md' || L(f.rel) === 'docs\\check\\run-flow.txt').map((f) => f.rel),
     ...starts.flatMap((r) => { const ns = numbered(byLow.get(L(r))?.text ?? ''); return ns.length >= 3 ? [`${r} 第 ${ns[0]} 行起 ${ns.length} 条编号步骤`] : []; })];
   const rf = byLow.get('docs\\run-flow.md')?.text, noDraw = noDrawOf((rf ?? '').split(/\r?\n/)), shorts = stepRows(rf);
@@ -1223,15 +1404,20 @@ function pics(t, kind, starts, fl) {
     note(`可查看候选（请 AI 看是不是流程图）：${f.rel}（${f.size} 字节）`); want(f.rel, LOOK);
     if (!/\.html?$/i.test(f.rel)) continue;
     // 只把 docs\run-flow.html 和自家图源比（句子和 flow 一样）；别的 html、别的做法的图读得出属性才列四样事实，不比、不 ✗
-    if (json && L(f.rel) === L(RUN_HTML)) { htmlVsSrc(SRC, path.join(SRC, f.rel), json, noDraw); continue; }
-    const p = picOf(path.join(SRC, f.rel));
-    if (p && !p.err) picFacts(p, shorts, cap, f.rel);
+    try {
+      const pic = picOf(path.join(SRC, f.rel));
+      if (L(f.rel) === L(RUN_HTML) && (!pic || pic.err)) no(`${f.rel} 图源异常：${pic?.err ?? '读不出流程图节点'}`);
+      else if (json && L(f.rel) === L(RUN_HTML)) htmlVsSrc(SRC, path.join(SRC, f.rel), json, noDraw);
+      else if (pic && !pic.err) picFacts(pic, shorts, cap, f.rel);
+    } catch (error) { no(`${f.rel} 图源异常：${error.message}；继续体检`); }
   }
   for (const f of cap(srcs, '图源')) note(`图源：${f.rel}`);
   words.forEach((w) => note(`文字流程：${w}`));
   if (st && st <= 3) note(`当前站 ${st}，还在画，先核已有的`);
   else if (!view.length) no(`没有可查看的流程图（${srcs.length ? '只有图源' : words.length ? '只有文字流程' : '什么都没有'}）${noDraw ? '；运行表表头写了"不画图"，照样记' : ''}`);
-  if (mine) selfPic(mine, fl);
+  if (mine) {
+    try { selfPic(mine, fl); } catch (error) { no(`自家图源 ${SELF} 结构异常：${error.message}；继续体检`); }
+  }
   else if (kind.startsWith('教练做的')) note(`自家图源 ${SELF} 不在，不比`);
   // 外来图源列全部节点和四样事实，不判；Mermaid 不解析
   for (const f of srcs.filter((x) => x !== mine)) {
@@ -1254,6 +1440,12 @@ function pics(t, kind, starts, fl) {
 function selfPic(f, fl) {
   let j;
   try { j = JSON.parse(f.text); } catch { (f.text === undefined ? note : no)(`自家图源 ${SELF} ${f.text === undefined ? '没读内容' : '不是合法的 JSON'}，不比`); return; }
+  const object = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  if (!object(j) || ['nodes', 'edges', 'phases', 'lanes'].some((k) =>
+    j[k] !== undefined && (!Array.isArray(j[k]) || j[k].some((x) => !object(x))))) {
+    no('自家图源 ' + SELF + ' 结构不对：顶层及数组元素要是对象，图源本项不比');
+    return;
+  }
   if (!fl?.rows || !fl?.inRows) { note(`自家图源：运行表没读成，不比`); return; }
   const steps = stepsOf(fl.rows), ids = fl.inRows.map((r) => inputId(r[0])).filter(Boolean);
   const arr = (x) => (Array.isArray(x) ? x : []), nodes = arr(j.nodes), edges = arr(j.edges), ph = arr(j.phases);
@@ -1511,11 +1703,11 @@ async function quote() {
     '0 处就照原样发出；不是 0 就改成自己的话，或放引号（不超过 30 字）带出处，再喂一次。草稿不存文件。'].join('\n'));
 }
 
-const COMMANDS = { init, files, inputs, flow, accept, scan, quote };
+const COMMANDS = { init, files, inputs, flow, ticket, accept, scan, quote };
 
 try {
   if (!Object.hasOwn(COMMANDS, cmd ?? '') || (cmd === 'scan' && !extra) || (cmd === 'quote' && (!arg || extra !== undefined)))
-    stop('用法：node coach-check.mjs <init|files|inputs|flow|accept> <学员项目完整路径> [站号或票号]；node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>；node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入喂）');
+    stop('用法：node coach-check.mjs <init|files|inputs|flow|ticket|accept> <学员项目完整路径> [站号或票号]；node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>；node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入喂）');
   for (const p of cmd === 'scan' ? [arg, extra] : [arg]) {
     // 只认盘符开头的完整路径：\x、/x（当前盘的根）、\\机器\共享（网络路径）、相对路径都不认
     if (!p || !/^[A-Za-z]:[\\/]/.test(p)) stop(`要给完整路径，以盘符开头（例如 C:\\Users\\你\\Desktop\\我的Agent\\周报汇总），不认当前目录，也不认网络路径。现在是"${p ?? ''}"`);
