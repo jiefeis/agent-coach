@@ -119,6 +119,10 @@ test('Case 2 · 尾票定稿、异票原话与快跑前缀', windows, (t) => {
     makeTicket(dir, '02', { phrase });
     check(dir, 'accept', '02', false, /其它票号/);
   }
+  for (const phrase of ['不要就这样跑', '不是“就这样跑”', '如果我说就这样跑，再开始']) {
+    makeTicket(dir, '02', { phrase });
+    check(dir, 'accept', '02', false, /运行许可/);
+  }
   makeTicket(dir, '02', { phrase: '票 02，就这样跑' });
   check(dir, 'accept', '02', true);
 });

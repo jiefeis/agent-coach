@@ -768,7 +768,11 @@ function verifyRunPermission(data) {
   if (quote === '按快跑档推进') {
     checkFastBatch(N, cv, date.trim(), rows, lines);
     if (!hasBad) no('快跑缺少本票当期坏输入结果的内容断言');
-  } else if (!quote.includes('就这样跑') || quote.includes('按快跑档推进')) no('当前验收单没有单票运行许可或合法快跑许可');
+  } else {
+    // 单票许可是明确的口令。否定句、引用和假设句不能仅因含有这四个字而放行。
+    const singleRun = /^(?:票\s*\d+\s*(?:验收单确认)?\s*[，,：:｜|]?\s*)?就这样跑[。！!]?$/u;
+    if (!singleRun.test(quote.trim())) no('当前验收单没有明确的单票运行许可或合法快跑许可');
+  }
 }
 
 function currentParameter(row) {
