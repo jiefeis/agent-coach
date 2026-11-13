@@ -426,7 +426,7 @@ function flow() {
   const ids = inRows.map((r) => inputId(r[0])).filter(Boolean);
   const steps = stepsOf(flowRows), W = steps.length;
   if (!W) no('运行表一行都没有：第 1 步要是"认出输入"，最后一步要是"你"');
-  if (W > 5) no(`运行表有 ${W} 步，第一个项目不超过 5 步，先切一小块`);
+  if (W > 7) no(`运行表有 ${W} 步，第一版不超过 7 步（含认出输入、可选清洗与人工核对），先切一小块`);
   if (W && steps[0].short !== '认出输入') no(`第 1 步要是"认出输入"，现在是"${steps[0].short}"`);
   if (W && steps[W - 1].who !== '你') no(`最后一步要是"你"，现在第 ${W} 步是"${steps[W - 1].who}"`);
   const outs = []; // 每个"放到哪"的真实位置，最后比有没有两步写到同一处
@@ -710,7 +710,9 @@ function checkValueSource(N, row, body) {
   const source = entries.length === 1 ? entries[0].replace(/^- 预期值来源[：:]\s*/, '').trim() : '';
   const match = /^(样例清点确认|旧成品对照|SOP硬阈值|边界小样核定|AI同源试算（未做独立口径核验）)[：:](.+)$/.exec(source);
   const why = match?.[2]?.trim() ?? '';
-  const calculated = /汇总|合计|剔除|筛选|差值|平均|占比|率|折算|排名|星标/.test(row?.join(' ') ?? '');
+  // 沿用原有计算/筛选规则；清洗类动作只看本步做什么，读取前一步清洗产物仍可只是清点。
+  const calculated = /汇总|合计|剔除|筛选|差值|平均|占比|率|折算|排名|星标/.test(row?.join(' ') ?? '')
+    || /清洗|去重|转换|标准化|映射/.test(row?.[3] ?? '');
   if (!why || /[<>]|\.{3}|…|待填|待确认/.test(why) || (N !== 1 && calculated && match[1] === '样例清点确认')) {
     no('计算或筛选步骤缺少独立真值来源（旧成品对照 / SOP硬阈值 / 边界小样核定，或显式标明 AI同源试算未核风险）；清点步骤也须填写具体来源');
   }
@@ -794,7 +796,9 @@ function baselineStatus(lines) {
   if (where < 0) return false;
   const results = below(lines, where);
   const round = results.findLastIndex((l) => /^### 第\s*\d+\s*轮/.test(l));
-  return round >= 0 && below(results, round).some((l) => !/[<>［］]/.test(l) && /固定基线.*(?:未跑|不适用|已回归通过|实跑通过)/.test(l));
+  if (round < 0 || /第\s*[KV]\s*(?:次|版)/.test(results[round])) return false;
+  return below(results, round).some((l) =>
+    !/[<>［］\[\]]/.test(l) && /固定基线.*(?:未跑|不适用|已回归通过|实跑通过)/.test(l));
 }
 
 function accept() {
