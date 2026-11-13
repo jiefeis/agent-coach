@@ -198,9 +198,21 @@ test('Case 5 · 材料联接只读，损坏图源单列发现', windows, (t) => 
 
 test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows, (t) => {
   const root=workspace(t), build=path.join(root,'build'), skill=path.join(root,'installed'), dir=path.join(root,'project');
+  const expectedMembers = new Map();
   function copyInput(rel) {
     const source = path.join(repo, rel);
-    if (fs.statSync(source).isFile()) return put(build, rel, fs.readFileSync(source));
+    if (fs.statSync(source).isFile()) {
+      const bytes = fs.readFileSync(source);
+      put(build, rel, bytes);
+      const name = rel.split(path.sep).join('/');
+      if (name === '工具/pack-release.ps1') return;
+      const target = name === 'LICENSE' ? 'LICENSE.md' : name;
+      const content = name === 'README.md'
+        ? Buffer.from(bytes.toString('utf8').replaceAll('](LICENSE)', '](LICENSE.md)'))
+        : bytes;
+      expectedMembers.set(target, content);
+      return;
+    }
     for (const name of fs.readdirSync(source)) copyInput(path.join(rel, name));
   }
   for (const name of ['AGENTS.md','CLAUDE.md','SKILL.md','README.md','LICENSE','做法','模板','讲解','工具']) copyInput(name);
@@ -208,19 +220,35 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
   const psEnv = { ...process.env };
   for (const key of Object.keys(psEnv)) if (key.toUpperCase() === 'PSMODULEPATH') delete psEnv[key];
   invoke('powershell.exe',['-NoProfile','-NonInteractive','-File',path.join(build,'工具','pack-release.ps1')],{ cwd:root, env:psEnv });
-  const release=process.env.AGENT_COACH_TEST_RELEASE || path.join(build,'releases','v1.18');
-  const file='agent-coach-v1.18-20261112.zip', zip=path.join(release,file);
-  const digest=createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
-  assert.equal(fs.readFileSync(path.join(release,'SHA256SUMS.txt'),'utf8').trim(),digest+'  '+file);
-  invoke('powershell.exe',['-NoProfile','-NonInteractive','-Command',
-    'Expand-Archive -LiteralPath $env:COACH_TEST_ZIP -DestinationPath $env:COACH_TEST_DEST -ErrorAction Stop'],
-    { env:{...psEnv,COACH_TEST_ZIP:zip,COACH_TEST_DEST:skill} });
-  assert.equal(fs.existsSync(path.join(skill, 'LICENSE')), false);
-  assert.deepEqual(fs.readFileSync(path.join(skill, 'LICENSE.md')), fs.readFileSync(path.join(build, 'LICENSE')));
-  const readme = fs.readFileSync(path.join(skill, 'README.md'), 'utf8');
-  assert.ok(readme.includes('](LICENSE.md)') && !readme.includes('](LICENSE)'));
-  const tool=path.join(skill,'工具','coach-check.mjs');
-  assert.equal(fs.existsSync(path.join(skill,'工具','pack-release.ps1')),false);
+  const releaseName = 'agent-coach-v1.20-20261112.zip';
+  const rebuilt = path.join(build, 'releases', 'v1.20');
+  const releaseDirs = process.env.AGENT_COACH_TEST_RELEASE
+    ? [rebuilt, process.env.AGENT_COACH_TEST_RELEASE]
+    : [rebuilt];
+  for (const [index, releaseDir] of releaseDirs.entries()) {
+    const isRebuilt = index === 0;
+    const dest = index === releaseDirs.length - 1 ? skill : path.join(root, 'rebuilt');
+    const zip = path.join(releaseDir, releaseName);
+    const digest = createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
+    assert.equal(fs.readFileSync(path.join(releaseDir, 'SHA256SUMS.txt'), 'utf8').trim(), digest + '  ' + releaseName);
+    invoke('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      'Expand-Archive -LiteralPath $env:COACH_TEST_ZIP -DestinationPath $env:COACH_TEST_DEST -ErrorAction Stop'],
+      { env: { ...psEnv, COACH_TEST_ZIP: zip, COACH_TEST_DEST: dest } });
+
+    const files = fs.readdirSync(dest, { recursive: true })
+      .filter((rel) => fs.statSync(path.join(dest, rel)).isFile())
+      .map((rel) => rel.split(path.sep).join('/')).sort();
+    assert.deepEqual(files, [...expectedMembers.keys()].sort());
+    for (const [name, expected] of expectedMembers) {
+      const actual = fs.readFileSync(path.join(dest, name));
+      // A checkout can normalize LF/CRLF. The local packer must otherwise copy runtime bytes exactly.
+      if (isRebuilt && name !== 'README.md') assert.deepEqual(actual, expected, name);
+      else assert.equal(actual.toString('utf8').replaceAll('\r\n', '\n'),
+        expected.toString('utf8').replaceAll('\r\n', '\n'), name);
+    }
+  }
+  const tool = path.join(skill, '工具', 'coach-check.mjs');
+  assert.ok(fs.readFileSync(path.join(skill, 'README.md'), 'utf8').includes('](LICENSE.md)'));
   const runCheck=(cmd,num)=>check(dir,cmd,num,true,undefined,tool);
   runCheck('init');
   put(dir,'materials/周报-W44.csv','金额\n120');
