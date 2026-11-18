@@ -4,7 +4,7 @@
 //       node coach-check.mjs files <学员项目完整路径> <站号 1-5>
 //       node coach-check.mjs inputs <学员项目完整路径>
 //       node coach-check.mjs flow <学员项目完整路径>
-//       node coach-check.mjs ticket <学员项目完整路径> <票号>（只核语法）
+//       node coach-check.mjs ticket <学员项目完整路径> <票号>（语法预检与验收单指纹）
 //       node coach-check.mjs accept <学员项目完整路径> <票号>
 //       node coach-check.mjs scan <报告文件夹完整路径> <被体检文件夹完整路径>（只读被体检文件夹，只写 报告文件夹\docs\check\scan.txt）
 //       node coach-check.mjs quote <被体检文件夹完整路径>（草稿从标准输入读；只读被体检文件夹，不写任何文件，结果只打在屏幕上）
@@ -395,7 +395,7 @@ const dirsOf = (inRows) => [...new Set(inRows.map((r) => r[1].trim()))];
 // 运行表的数据行 → 步（flow、scan 共用）
 const stepsOf = (rows) => rows.map(([n, who, from, what, to, judge]) => {
   const tail = judge === '—' ? '' : (judge.split('｜')[2] ?? '');
-  // ponytail: 只拆已有“退回第K步”分句；并列目标不能唯一对应条件时留待人工核，不猜自然语言。
+  // ponytail: 按“退回第K步”拆分句；shortcut: 只认明写的步号，并列条件无法对应目标时交人工核，需自动判定时再扩展语法。
   const returns = [...tail.matchAll(/([^]*?)退回第\s*(\d+)\s*步/g)].map((m) =>
     ({ to: Number(m[2]), label: m[0].replace(/^[，,；;。\s]+/, '').trim() }));
   const unclear = returns.length > 1 && returns.some((r) => /^(?:退回|[或和及、]\s*(?:退回)?)/.test(r.label));
@@ -554,7 +554,7 @@ function htmlVsSrc(root, abs, json, noDraw) {
 // 运行表 → Archify workflow JSON。四道：你、AI（看情况）、程序（AI照规矩）、文件；列＝步号；读写连线、下一步、退回；你的判断画红框、列头变色
 function swimlane(title, ids, steps, dirs) {
   const nodes = [], edges = [], used = new Set(), made = new Map(); // made：路径 → [文件节点, 写它的那步的节点]
-  // ponytail: 短表四道原源972×660被按宽放大而溢出；预留桌面横向容量，仍由实际浏览器门核，不固定viewBox上限。
+  // ponytail: 四泳道短表预留桌面宽度；shortcut: 最多 3 步按 1200 像素估宽，实测仍溢出时再调布局。
   const minWidth = steps.length <= 3 ? Math.ceil(1200 / (steps.length + 1)) : 96;
   // 宽度照 archify 的算法估：全角字算 2 份、半角算 1 份。估宽了图会太宽，1440 屏上字小到判不过
   const units = (t) => [...t].reduce((n, ch) => n + (ch.charCodeAt(0) > 0xff ? 2 : 1), 0);
@@ -740,12 +740,42 @@ function ticketContract() {
   const groups = assertionGroups(at < 0 ? [] : below(body, at));
   const hasBad = groups.current.some((c) => c.p.startsWith(`work\\${NN}-坏输入\\`) && c.verb === '含');
   if (N === 1 && !hasBad) no('票 01 缺少坏输入结果的内容断言');
-  return { ...data, rows, row, version, groups, hasBad };
+  return { ...data, rows, row, version, groups, hasBad, sheet: [lines[vi], ...body] };
+}
+
+function checkTicketFingerprint({ NN, lines, version, sheet }) {
+  const rel = `docs\\check\\ticket-${NN}-v${version}.sha256`;
+  const file = guard(rel);
+  const body = sheet.map((line) => line.trimEnd()).join('\n').trimEnd();
+  const hash = createHash('sha256').update(body, 'utf8').digest('hex') + '\n';
+  if (cmd === 'ticket') {
+    const confirmed = confirmsOf(lines).some((line) => {
+      const match = CONFIRM.exec(line);
+      if (match?.[2] !== version) return false;
+      const value = line.slice(match[0].length).trim();
+      return !/<[^<>]*>/.test(value) && /^[^｜|]+[｜|]\s*\S/.test(value);
+    });
+    if (!confirmed) return writeIn(rel, hash);
+  }
+  const next = BigInt(version) + 1n;
+  if (lexists(file)) {
+    if (fs.readFileSync(file, 'utf8') !== hash) no(cmd === 'ticket'
+      ? `第 ${version} 版已确认，改验收单须升为第 ${next} 版`
+      : `票 ${NN} 第 ${version} 版验收单在确认/预检后被改过，请恢复原验收单或升为第 ${next} 版重新请学员确认`);
+    return;
+  }
+  const idx = path.join(PROJ, 'docs', 'PROJECT_INDEX.md');
+  const project = lexists(idx) ? fs.readFileSync(idx, 'utf8').replace(/^\uFEFF/, '') : '';
+  const coach = /^搭建教练版本：[ \t]*v(\d+)\.(\d+)\b/m.exec(project);
+  if (coach && (+coach[1] > 1 || (+coach[1] === 1 && +coach[2] >= 21)))
+    no(`第 ${version} 版已确认但缺预检指纹：请升为第 ${next} 版，跑 ticket 后重新请学员确认`);
+  else note(`第 ${version} 版验收单没有预检指纹（旧票或手写），本次未核正文是否改过`);
 }
 
 function ticket() {
   const data = ticketContract();
   if (data) label = `票 ${data.NN}｜第 ${data.version ?? '?'} 版｜语法预检`;
+  if (data && !bad) checkTicketFingerprint(data);
   out.push('语法预检不代表已有批准、产物或业务验收结果。');
 }
 
@@ -806,6 +836,7 @@ function accept() {
   if (!data) return;
   verifyRunPermission(data);
   if (bad || !data.row) return;
+  checkTicketFingerprint(data);
   const { fixed, current, baseline } = data.groups;
   const param = baseline ? currentParameter(data.row) : '';
   if (!param || param === baseline) fixed.forEach(selfCheck);
@@ -1108,7 +1139,7 @@ function memory(t, kind, routesOnly = false) {
     return [...t.files.filter((f) => inB(f.rel)).flatMap((f) => [[cut(f.rel), f.rel], ...(!base && path.basename(f.rel).includes('.') ? [[path.basename(f.rel), f.rel]] : [])]),
       ...t.dirs.filter(inB).map((d) => [cut(d) + '\\', d, true])]; };
   const ROOT = needles(pairsIn(''));
-  // ponytail: 每行拿全部路径逐个找，文件多、行多时慢；上限 3,000 份文件，够用
+  // ponytail: 每行逐个匹配已知路径；shortcut: 最多 3,000 份文件，实测逐行匹配成为瓶颈时再建索引。
   function pathsIn(line, nds, cd) {
     let norm = line.replaceAll('/', '\\');
     const found = [], mask = (i, j) => { norm = norm.slice(0, i) + ' '.repeat(j - i) + norm.slice(j); };
@@ -1612,7 +1643,7 @@ function scan() {
 // ---------- quote：教练发话前查草稿。草稿从标准输入读，只读被体检文件夹，不写任何文件，结果只打在屏幕上 ----------
 // 判法照澄清第 6、14、24、25、34、36、37 条：字按码点数；和被体检任一文字文件连着 10 字相同的是原文，引号字符也当字连着比；
 // 教练的引号是教练写的那一对，套在里面、原件同一处也有的一对是原文的字；单放的路径、文件名不算原文
-const QN = 10, QMAX = 2 * 1024 * 1024; // ponytail: 索引总字数封顶 2M，小文件先索引，超出的列"没比"；要更大再分批
+const QN = 10, QMAX = 2 * 1024 * 1024; // ponytail: 小文件先索引，超出的列“没比”；shortcut: 最多 2M 个码点，需覆盖更大文本时再分批。
 const QOPEN = { '「': '」', '『': '』', '“': '”', '‘': '’', '"': '"' }; // ASCII ' 不当引号：英文撇号会配成一对
 // 10 字的指纹：两个 32 位乘加散列拼成 53 位数；命中后逐字核一遍，碰撞不会误报
 function gram(u, o) {
