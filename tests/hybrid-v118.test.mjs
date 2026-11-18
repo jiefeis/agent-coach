@@ -91,11 +91,13 @@ test('Case 1 · 计算步预期值来源，写代码前预检与实跑验收共�
   produced(dir, '02');
   for (const source of [independent, 'SOP硬阈值：§4.1', '边界小样核定：第 2–4 行，净额 120',
     'AI同源试算（未做独立口径核验）：学员已选择采用试算值 120']) {
+    makeTicket(dir, '02', { source, phrase: '' });
+    check(dir, 'ticket', '02', true);
     makeTicket(dir, '02', { source });
-    for (const cmd of ['ticket', 'accept']) check(dir, cmd, '02', true);
+    check(dir, 'accept', '02', true);
   }
-  makeTicket(dir, '02', { checks: ['- [ ] 有 work\\02-结果.txt'] });
-  check(dir, 'ticket', '02', false);
+  makeTicket(dir, '02', { checks: ['- [ ] 有 work\\02-结果.txt'], phrase: '' });
+  check(dir, 'ticket', '02', false, /写法不认得/);
   makeTicket(dir, '01', { checks: ['- 有 ' + output('01')] });
   check(dir, 'ticket', '01', false, /坏输入/);
   makeTicket(dir, '03');
@@ -220,8 +222,8 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
   const psEnv = { ...process.env };
   for (const key of Object.keys(psEnv)) if (key.toUpperCase() === 'PSMODULEPATH') delete psEnv[key];
   invoke('powershell.exe',['-NoProfile','-NonInteractive','-File',path.join(build,'工具','pack-release.ps1')],{ cwd:root, env:psEnv });
-  const releaseName = 'agent-coach-v1.20-20261112.zip';
-  const rebuilt = path.join(build, 'releases', 'v1.20');
+  const releaseName = 'agent-coach-v1.21-20261118.zip';
+  const rebuilt = path.join(build, 'releases', 'v1.21');
   const releaseDirs = process.env.AGENT_COACH_TEST_RELEASE
     ? [rebuilt, process.env.AGENT_COACH_TEST_RELEASE]
     : [rebuilt];
@@ -258,9 +260,11 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
   put(dir,'inputs/01-认出输入/周报-W44.csv','金额\n120');
   flow(dir,[one,['2','你',output('01'),'核对：检查。依据：例 2','—','核金额｜相符｜不对退回第1步']]);
   runCheck('inputs'); runCheck('flow'); runCheck('files','3');
-  makeTicket(dir,'01');
-  fs.renameSync(path.join(dir,ticketPath('01')),path.join(dir,'docs/tickets/01-认出输入.md'));
+  makeTicket(dir,'01',{ phrase: '' });
+  const recognitionTicket = path.join(dir,'docs/tickets/01-认出输入.md');
+  fs.renameSync(path.join(dir,ticketPath('01')),recognitionTicket);
   runCheck('ticket','01');
+  fs.appendFileSync(recognitionTicket,'\n## 确认记录\n- 第 1 次确认（第 1 版）：2026-11-12｜就这样跑','utf8');
   // 真实执行样例脚本两次，再让已解包的检查器读取正常及坏输入证据。
   put(dir, 'scripts/01_样例.js', [
     "const fs = require('node:fs'), path = require('node:path');",

@@ -17,12 +17,12 @@ test('v1.20 跨文件静态契约：版本号、五站总览口令、完成清�
   const check0 = fs.readFileSync(path.join(root, '做法', '0-体检.md'), 'utf8');
   const repair0 = fs.readFileSync(path.join(root, '做法', '0-修复复诊.md'), 'utf8');
 
-  assert.match(agents.split(/\r?\n/)[0], /v1\.20/);
-  assert.match(readme, /当前版本：\*\*v1\.20\*\*/);
-  assert.match(readme, /releases\/v1\.20\/agent-coach-v1\.20-20261112\.zip/);
+  assert.match(agents.split(/\r?\n/)[0], /v1\.21/);
+  assert.match(readme, /当前版本：\*\*v1\.21\*\*/);
+  assert.match(readme, /releases\/v1\.21\/agent-coach-v1\.21-20261118\.zip/);
   assert.match(readme, /仅定稿尾票.*接班后须说 `就这样跑`/);
-  assert.match(overview, /Agent 搭建教练 v1\.20：五站总览/);
-  assert.match(packScript, /releases\\v1\.20/);
+  assert.match(overview, /Agent 搭建教练 v1\.21：五站总览/);
+  assert.match(packScript, /releases\\v1\.21/);
 
   // 确保五站总览图已清除旧版废弃口令并对齐现行口令（含体检批量修复口令）
   for (const stale of ['这套做法行得通', '流程排好了', '第 N 票验收通过', '收尾通过']) {
@@ -151,10 +151,14 @@ test('v1.20 清洗票需要独立真值，只点收其产物不升级成计算�
   write(proj,'docs/run-flow.md',runFlow(6));
   function checkWith(n, source, verdict) {
     const out = n === '02' ? cleaned : 'work\\03-行数.md';
-    write(proj,'docs/tickets/'+n+'-样例.md',['# 票 '+n+'：样例','## 这一步','## 验收单（第 1 版）',
-      '- 预期值来源：'+source,'### AI 自检','- 有 '+out,'## 确认记录','- 第 1 次确认（第 1 版）：2026-11-12｜就这样跑'].join('\n'));
+    const ticket = 'docs/tickets/'+n+'-样例.md';
+    const detail = verdict==='不通过' ? /独立真值来源/ : undefined;
+    write(proj,ticket,['# 票 '+n+'：样例','## 这一步','## 验收单（第 1 版）',
+      '- 预期值来源：'+source,'### AI 自检','- 有 '+out].join('\n'));
+    runCheck(proj,'ticket',n,verdict,detail);
+    fs.appendFileSync(path.join(proj,ticket),'\n## 确认记录\n- 第 1 次确认（第 1 版）：2026-11-12｜就这样跑','utf8');
     write(proj,out,'120\n');
-    for (const cmd of ['ticket','accept']) runCheck(proj,cmd,n,verdict,verdict==='不通过' ? /独立真值来源/ : undefined);
+    runCheck(proj,'accept',n,verdict,detail);
   }
   checkWith('02','样例清点确认：首行有金额', '不通过');
   checkWith('02','边界小样核定：第 2–4 行重复，只计一次，净额 120','通过');

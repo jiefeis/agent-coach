@@ -2,7 +2,7 @@
 
 **带不写代码的人，按「五站法」把一件日常工作稳妥交给 AI。**
 
-当前版本：**v1.20**（以 `agent-coach` 技能调用） · [下载完整技能包 (.zip)](https://raw.githubusercontent.com/jiefeis/agent-coach/main/releases/v1.20/agent-coach-v1.20-20261112.zip) · [SHA-256 校验清单](https://raw.githubusercontent.com/jiefeis/agent-coach/main/releases/v1.20/SHA256SUMS.txt)
+当前版本：**v1.21**（以 `agent-coach` 技能调用） · [下载完整技能包 (.zip)](https://raw.githubusercontent.com/jiefeis/agent-coach/main/releases/v1.21/agent-coach-v1.21-20261118.zip) · [SHA-256 校验清单](https://raw.githubusercontent.com/jiefeis/agent-coach/main/releases/v1.21/SHA256SUMS.txt)
 
 ## 为什么用 Agent Coach？
 
@@ -54,7 +54,7 @@
 
 ### 3 步安装（以 WorkBuddy 为例）
 
-1. 下载上方的 `agent-coach-v1.20-20261112.zip`（保持原 ZIP，无需解压重打包）。
+1. 下载上方的 `agent-coach-v1.21-20261118.zip`（保持原 ZIP，无需解压重打包）。
 2. 在 WorkBuddy「技能管理 -> 添加技能 -> 上传技能」中上传该 ZIP 包。
 3. 打开你自己的空项目文件夹，切换到 **Agent** 模式并勾选 `agent-coach` 技能即可开聊（在 Claude Code / Codex 中同样可直接加载本技能目录）。
 
@@ -76,6 +76,6 @@
 * **操作范围**：`materials\` 原件只读。初诊和复诊只读被检目标；修复只处理已获批的项。涉及对外发送、付款、删除 `materials\` / `work\` / `output\` 文件的操作一律交由人工执行。
 * **试用提示**：静态检查器通过代表文件契约与断言核对一致，涉及模型主观生成的步骤仍请结合业务凭据审阅确认。
 
-在 Git 仓库根目录运行 `.\工具\pack-release.ps1` 可重建安装包和校验清单，输出在 `releases\v1.20\`。
+在 Git 仓库根目录运行 `.\工具\pack-release.ps1` 可重建安装包和校验清单，输出在 `releases\v1.21\`。
 
 本仓库采用 [MIT License](LICENSE) 开源。
