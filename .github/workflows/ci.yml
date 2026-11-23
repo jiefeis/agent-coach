@@ -30,18 +30,19 @@ jobs:
       - name: Verify the committed release checksum
         shell: pwsh
         run: |
-          $sumLine = Get-Content -LiteralPath "releases/v1.21/SHA256SUMS.txt" -TotalCount 1
-          if ($sumLine -notmatch '^([0-9a-f]{64})\s+agent-coach-v1\.21-20261118\.zip$') {
-            throw "Unexpected SHA256SUMS.txt format: $sumLine"
-          }
+          $header = Get-Content -LiteralPath 'AGENTS.md' -Encoding utf8 -TotalCount 1
+          if ($header -notmatch 'v(\d+\.\d+\.\d+)\s+\((\d{4})-(\d{2})-(\d{2})\)') { throw 'Invalid release header' }
+          $dir = "releases/v$($Matches[1])"
+          $zip = "agent-coach-v$($Matches[1])-$($Matches[2])$($Matches[3])$($Matches[4]).zip"
+          $sumLine = Get-Content -LiteralPath "$dir/SHA256SUMS.txt" -TotalCount 1
+          if ($sumLine -cnotmatch ('^([0-9a-f]{64})  ' + [regex]::Escape($zip) + '$')) { throw "Unexpected checksum: $sumLine" }
           $expected = $Matches[1]
-          $actual = (Get-FileHash -LiteralPath "releases/v1.21/agent-coach-v1.21-20261118.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $actual = (Get-FileHash -LiteralPath "$dir/$zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "AGENT_COACH_TEST_RELEASE=$((Resolve-Path -LiteralPath $dir).Path)" >> $env:GITHUB_ENV
           if ($expected -ne $actual) {
             throw "SHA256 mismatch: expected $expected, got $actual"
           }
 
       - name: Run all suites against the committed package
-        env:
-          AGENT_COACH_TEST_RELEASE: ${{ github.workspace }}/releases/v1.21
         shell: pwsh
-        run: node --test tests/fast-accept.test.mjs tests/hybrid-v118.test.mjs tests/governance-v120.test.mjs tests/fingerprint-v121.test.mjs
+        run: node --test --test-concurrency=1 tests/fast-accept.test.mjs tests/hybrid-v118.test.mjs tests/governance-v120.test.mjs tests/fingerprint-v121.test.mjs tests/rescue-v200.test.mjs

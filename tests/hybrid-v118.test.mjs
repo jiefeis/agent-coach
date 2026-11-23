@@ -222,8 +222,8 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
   const psEnv = { ...process.env };
   for (const key of Object.keys(psEnv)) if (key.toUpperCase() === 'PSMODULEPATH') delete psEnv[key];
   invoke('powershell.exe',['-NoProfile','-NonInteractive','-File',path.join(build,'工具','pack-release.ps1')],{ cwd:root, env:psEnv });
-  const releaseName = 'agent-coach-v1.21-20261118.zip';
-  const rebuilt = path.join(build, 'releases', 'v1.21');
+  const releaseName = 'agent-coach-v2.0.0-20261120.zip';
+  const rebuilt = path.join(build, 'releases', 'v2.0.0');
   const releaseDirs = process.env.AGENT_COACH_TEST_RELEASE
     ? [rebuilt, process.env.AGENT_COACH_TEST_RELEASE]
     : [rebuilt];
