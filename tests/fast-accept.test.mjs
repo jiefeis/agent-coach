@@ -56,7 +56,7 @@ test('快跑单口令仅接受当前批次中没有人工停点的纯脚本票',
     { date: '2026-11-11' }, { version: 2 }, { who: 'AI看情况' }, { who: '你' },
     { second: '你' }, { judge: '看数据｜对金额｜不对退回第1步' }, { method: 'AI 亲自做' },
     { method: '写程序（scripts\\01_不存在.js）' }, { station: '已结束（停止）' },
-    { phrase: '继续' }, { phrase: '按快跑档推进，就这样跑', scope: '' }, { skipBad: true }, { badResult: '漏过坏输入' },
+    { phrase: '继续' }, { phrase: '按快跑档推进，就这样跑' }, { skipBad: true }, { badResult: '漏过坏输入' },
   ]) verify(false, invalid);
   verify(true, { phrase: '就这样跑', scope: '', who: 'AI看情况', method: 'AI 亲自做' });
   verify(false, { phrase: '票 01 验收单确认', scope: '' });

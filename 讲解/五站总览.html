@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Agent 搭建教练 v1.21：五站总览</title>
+<title>Agent 搭建教练 v2.0.0：五站总览</title>
 <style>
 :root{--bg:#f5f6f8;--card:#ffffff;--band:#eef1f5;--line:#c5ccd6;--text:#1d232b;--muted:#5b6573;--accent:#c62f4b;--you:#1f6feb;--ai:#8250df;--ok:#1a7f37}
 @media (prefers-color-scheme:dark){:root{--bg:#0b1120;--card:#111a2c;--band:#1a2539;--line:#3a4760;--text:#e7eaf0;--muted:#9aa5b8;--accent:#fb7185;--you:#6cb6ff;--ai:#c297ff;--ok:#57d27a}}
@@ -29,8 +29,8 @@ svg .hint{fill:var(--muted);font-size:14px}
 </head>
 <body>
 <main>
-<h1>Agent 搭建教练 v1.21：五站总览</h1>
-<p>每站三件事：你给什么、AI 做什么、你核对哪句口令过关；教练结合原件判断数据治理等级，检查器核对运行表、票面与产物。</p>
+<h1>Agent 搭建教练 v2.0.0：五站总览</h1>
+<p>跟着五站把工作交给 AI。第 3 站可以双击项目活地图，第 4 站用同一对好坏小样先约结果，再拿文件对。</p>
 <svg viewBox="-2 -2 1404 604" role="img" aria-label="五站总览：建项目、说清需求与数据治理、排表画图、一步一票双档位、收尾交接；下方是五维体检闭环与三级同步回退">
 <defs><marker id="m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z"/></marker></defs>
 <g id="s1">
@@ -49,10 +49,10 @@ svg .hint{fill:var(--muted);font-size:14px}
 <rect class="band" x="286" y="0" width="256" height="64" rx="12"/>
 <rect class="band" x="286" y="40" width="256" height="24"/>
 <text class="no" x="304" y="27">第 2 站</text>
-<text class="name" x="304" y="52">说清需求·数据治理</text>
-<text class="say" x="304" y="98"><tspan x="304"><tspan class="k k0">你做</tspan>：一屏勾选默认建议</tspan><tspan x="304" dy="27">与数据治理方式（另存修</tspan><tspan x="304" dy="27">正副本或拆清洗脚本）。</tspan></text>
-<text class="say" x="304" y="204"><tspan x="304"><tspan class="k k1">AI 做</tspan>：SOP去噪、探查脏</tspan><tspan x="304" dy="27">数据并给标准清洗样例，</tspan><tspan x="304" dy="27">写精简版 INTAKE.md。</tspan></text>
-<text class="say" x="304" y="310"><tspan x="304"><tspan class="k k2">你确认</tspan>：核对边界与架构</tspan><tspan x="304" dy="27">推荐，说"任务单确认"</tspan><tspan x="304" dy="27">或"拆解确认"。</tspan></text>
+<text class="name" x="304" y="52">说清需求／拆 SOP</text>
+<text class="say" x="304" y="98"><tspan x="304"><tspan class="k k0">你做</tspan>：确定先做哪一块，</tspan><tspan x="304" dy="27">这张表直接用、另存修好，</tspan><tspan x="304" dy="27">还是先用程序洗一遍。</tspan></text>
+<text class="say" x="304" y="204"><tspan x="304"><tspan class="k k1">AI 做</tspan>：读原件或已有 SOP，</tspan><tspan x="304" dy="27">填好已知的事，把未定的</tspan><tspan x="304" dy="27">事写成一张确认单。</tspan></text>
+<text class="say" x="304" y="310"><tspan x="304"><tspan class="k k2">你确认</tspan>：看一次建议，</tspan><tspan x="304" dy="27">说"任务单确认"或</tspan><tspan x="304" dy="27">"拆解确认"。</tspan></text>
 </g>
 <path class="arrow" d="M546 232 H566" marker-end="url(#m)"/>
 <g id="s3">
@@ -61,9 +61,9 @@ svg .hint{fill:var(--muted);font-size:14px}
 <rect class="band" x="572" y="40" width="256" height="24"/>
 <text class="no" x="590" y="27">第 3 站</text>
 <text class="name" x="590" y="52">排表画图</text>
-<text class="say" x="590" y="98"><tspan x="590"><tspan class="k k0">你做</tspan>：一次核对输入参数</tspan><tspan x="590" dy="27">份数、合法枚举边界与人</tspan><tspan x="590" dy="27">工停点位置。</tspan></text>
-<text class="say" x="590" y="204"><tspan x="590"><tspan class="k k1">AI 做</tspan>：归位 inputs\，写</tspan><tspan x="590" dy="27">唯一主表 run-flow.md 并</tspan><tspan x="590" dy="27">出 run-flow.html 图。</tspan></text>
-<text class="say" x="590" y="310"><tspan x="590"><tspan class="k k2">你确认</tspan>：流向与停点无误，</tspan><tspan x="590" dy="27">说"流程就这样"。</tspan></text>
+<text class="say" x="590" y="98"><tspan x="590"><tspan class="k k0">你做</tspan>：点开每一步，看看</tspan><tspan x="590" dy="27">谁做、交哪份文件、</tspan><tspan x="590" dy="27">哪里得等你。</tspan></text>
+<text class="say" x="590" y="204"><tspan x="590"><tspan class="k k1">AI 做</tspan>：把输入放对地方，</tspan><tspan x="590" dy="27">写一张运行表，再出图。</tspan><tspan x="590" dy="27">也可以看文字流程。</tspan></text>
+<text class="say" x="590" y="310"><tspan x="590"><tspan class="k k2">你确认</tspan>：步骤和停点</tspan><tspan x="590" dy="27">合适，说"流程就这样"。</tspan></text>
 </g>
 <path class="arrow" d="M832 232 H852" marker-end="url(#m)"/>
 <g id="s4">
@@ -71,10 +71,10 @@ svg .hint{fill:var(--muted);font-size:14px}
 <rect class="band" x="858" y="0" width="256" height="64" rx="12"/>
 <rect class="band" x="858" y="40" width="256" height="24"/>
 <text class="no" x="876" y="27">第 4 站</text>
-<text class="name" x="876" y="52">一步一票（双档位）</text>
-<text class="say" x="876" y="98"><tspan x="876"><tspan class="k k0">你做</tspan>：核对独立真值依据</tspan><tspan x="876" dy="27">（旧成品/边界小样），选</tspan><tspan x="876" dy="27">教学档或快跑档。</tspan></text>
-<text class="say" x="876" y="204"><tspan x="876"><tspan class="k k1">AI 做</tspan>：自动派票、跑脚本</tspan><tspan x="876" dy="27">验基线与当期守恒，输出</tspan><tspan x="876" dy="27">【文件定位卡】。</tspan></text>
-<text class="say" x="876" y="310"><tspan x="876"><tspan class="k k2">你确认</tspan>：说"就这样跑"或</tspan><tspan x="876" dy="27">"按快跑档推进"，验后说</tspan><tspan x="876" dy="27">"票 N 通过"。</tspan></text>
+<text class="name" x="876" y="52">一步一票</text>
+<text class="say" x="876" y="98"><tspan x="876"><tspan class="k k0">你做</tspan>：选一份好样本、</tspan><tspan x="876" dy="27">一份坏样本，约定前者</tspan><tspan x="876" dy="27">出什么、后者怎么拦。</tspan></text>
+<text class="say" x="876" y="204"><tspan x="876"><tspan class="k k1">AI 做</tspan>：跑刚约好的两份，</tspan><tspan x="876" dy="27">把结果和坏表拦截记录</tspan><tspan x="876" dy="27">留在能打开的文件里。</tspan></text>
+<text class="say" x="876" y="310"><tspan x="876"><tspan class="k k2">你确认</tspan>：说"就这样跑"或</tspan><tspan x="876" dy="27">"按快跑档推进"，核完说</tspan><tspan x="876" dy="27">"票 N 通过"。</tspan></text>
 </g>
 <path class="arrow" d="M1118 232 H1138" marker-end="url(#m)"/>
 <g id="s5">
@@ -83,15 +83,16 @@ svg .hint{fill:var(--muted);font-size:14px}
 <rect class="band" x="1144" y="40" width="256" height="24"/>
 <text class="no" x="1162" y="27">第 5 站</text>
 <text class="name" x="1162" y="52">收尾交接</text>
-<text class="say" x="1162" y="98"><tspan x="1162"><tspan class="k k0">你做</tspan>：新开对话考一次项</tspan><tspan x="1162" dy="27">目 AI 的用途、真实下一步</tspan><tspan x="1162" dy="27">与排错文件路径。</tspan></text>
-<text class="say" x="1162" y="204"><tspan x="1162"><tspan class="k k1">AI 做</tspan>：固化按症状排错速</tspan><tspan x="1162" dy="27">查表、换周护栏与"帮我查</tspan><tspan x="1162" dy="27">哪步错了"口令。</tspan></text>
-<text class="say" x="1162" y="310"><tspan x="1162"><tspan class="k k2">你确认</tspan>：接班不越权且指</tspan><tspan x="1162" dy="27">路准确，说"采用"（或说</tspan><tspan x="1162" dy="27">"停止"立即熔断）。</tspan></text>
+<text class="say" x="1162" y="98"><tspan x="1162"><tspan class="k k0">你做</tspan>：换个对话问还能</tspan><tspan x="1162" dy="27">怎么接着做，数字不对</tspan><tspan x="1162" dy="27">时打开哪份文件。</tspan></text>
+<text class="say" x="1162" y="204"><tspan x="1162"><tspan class="k k1">AI 做</tspan>：交出最近核过的</tspan><tspan x="1162" dy="27">图或文字流程，写清换表</tspan><tspan x="1162" dy="27">和算错时先看哪里。</tspan></text>
+<text class="say" x="1162" y="310"><tspan x="1162"><tspan class="k k2">你确认</tspan>：接班方向对就</tspan><tspan x="1162" dy="27">说"采用"。不做了说</tspan><tspan x="1162" dy="27">"停止"，当场停。</tspan></text>
 </g>
 <g id="check">
 <rect class="check" x="0" y="460" width="1400" height="138" rx="12"/>
-<text class="name" x="24" y="498">独立支线：五维项目体检闭环（P01 分级诊断 · 复诊熔断）与日常三级同步回退</text>
-<text class="say" x="24" y="534"><tspan x="24"><tspan class="k k0">体检与自诊</tspan>：外置只读诊断说 </tspan><tspan class="k">"调用 agent-coach，体检当前项目"</tspan><tspan>，按单授权 </tspan><tspan class="k">"修复 P01"</tspan><tspan> 或 </tspan><tspan class="k">"修复全部硬伤"</tspan><tspan>；日常算错说 </tspan><tspan class="k">"帮我查哪步错了"</tspan><tspan>。</tspan></text>
-<text class="say" x="24" y="568"><tspan x="24"><tspan class="k k1">变更路由</tspan>：单步改公式原地升版跑基线；增删步骤或改流向先改 run-flow.md 再说 </tspan><tspan class="k">"同步改动"</tspan><tspan> 重画 Archify 图与对齐工单票。</tspan></text>
+<text class="name" x="24" y="493">项目体检与原地续跑</text>
+<text class="say" x="24" y="524">对 AI 说 "调用 agent-coach，体检当前项目"。看过建议后回 "按建议修好并接着做" 或 "修复全部硬伤"。日常算错说 "帮我查哪步错了"。</text>
+<text class="say" x="24" y="554">五站口令：项目建好了 → 任务单确认／拆解确认 → 流程就这样 → 就这样跑／按快跑档推进、票 N 通过 → 采用／停止。</text>
+<text class="say" x="24" y="583">改这一步就核这张单。增删步骤或改读写时说 "同步改动"，把运行表、图和有关的单子一起核对。</text>
 </g>
 </svg>
 </main>

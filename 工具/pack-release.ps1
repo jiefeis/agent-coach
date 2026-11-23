@@ -1,8 +1,12 @@
-﻿# 从任意目录运行脚本，生成仓库 releases\v1.21 下的安装包与校验清单。
+﻿# 从任意目录运行脚本，生成与 AGENTS.md 首行一致的安装包与校验清单。
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$OutDir = Join-Path $RepoRoot 'releases\v1.21'
-$ZipName = 'agent-coach-v1.21-20261118.zip'
+$Header = Get-Content -LiteralPath (Join-Path $RepoRoot 'AGENTS.md') -Encoding UTF8 -TotalCount 1
+if ($Header -notmatch 'v(\d+\.\d+\.\d+)\s+\((\d{4})-(\d{2})-(\d{2})\)') { throw 'AGENTS.md 首行缺少三段版号或日期' }
+$Version = 'v' + $Matches[1]
+$DateStamp = $Matches[2] + $Matches[3] + $Matches[4]
+$OutDir = Join-Path $RepoRoot "releases\$Version"
+$ZipName = "agent-coach-$Version-$DateStamp.zip"
 $ZipPath = Join-Path $OutDir $ZipName
 $SumPath = Join-Path $OutDir 'SHA256SUMS.txt'
 $Include = @('AGENTS.md', 'CLAUDE.md', 'README.md', 'SKILL.md', 'LICENSE', '做法', '工具', '模板', '讲解')

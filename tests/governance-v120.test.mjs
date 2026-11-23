@@ -17,12 +17,12 @@ test('v1.20 跨文件静态契约：版本号、五站总览口令、完成清�
   const check0 = fs.readFileSync(path.join(root, '做法', '0-体检.md'), 'utf8');
   const repair0 = fs.readFileSync(path.join(root, '做法', '0-修复复诊.md'), 'utf8');
 
-  assert.match(agents.split(/\r?\n/)[0], /v1\.21/);
-  assert.match(readme, /当前版本：\*\*v1\.21\*\*/);
-  assert.match(readme, /releases\/v1\.21\/agent-coach-v1\.21-20261118\.zip/);
+  assert.match(agents.split(/\r?\n/)[0], /v2\.0\.0/);
+  assert.match(readme, /当前版本：\*\*v2\.0\.0\*\*/);
+  assert.match(readme, /releases\/v2\.0\.0\/agent-coach-v2\.0\.0-20261120\.zip/);
   assert.match(readme, /仅定稿尾票.*接班后须说 `就这样跑`/);
-  assert.match(overview, /Agent 搭建教练 v1\.21：五站总览/);
-  assert.match(packScript, /releases\\v1\.21/);
+  assert.match(overview, /Agent 搭建教练 v2\.0\.0：五站总览/);
+  assert.match(packScript, /\$OutDir = Join-Path \$RepoRoot "releases\\\$Version"/);
 
   // 确保五站总览图已清除旧版废弃口令并对齐现行口令（含体检批量修复口令）
   for (const stale of ['这套做法行得通', '流程排好了', '第 N 票验收通过', '收尾通过']) {
