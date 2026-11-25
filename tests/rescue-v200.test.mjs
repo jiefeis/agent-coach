@@ -10,17 +10,25 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-rescue-'));
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
-const release = process.env.AGENT_COACH_TEST_RELEASE || path.join(repo, 'releases/v2.0.0');
-const zipName = 'agent-coach-v2.0.0-20261120.zip';
+const release = process.env.AGENT_COACH_TEST_RELEASE || path.join(repo, 'releases/v2.1.0');
+const zipName = 'agent-coach-v2.1.0-20261125.zip';
 const windows = { skip: process.platform !== 'win32' };
+function requireFixture(t, name) {
+  const value=process.env[name];
+  if (value) return value;
+  assert.ok(!process.env.AGENT_COACH_DIAG_EVIDENCE &&
+    !(name==='AGENT_COACH_TEST_PLAYWRIGHT' && (process.env.AGENT_COACH_TEST_RELEASE || process.env.CI)),
+  '正式验收必须设置 '+name);
+  t.skip('未设置 '+name);
+}
 const psEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== 'PSMODULEPATH'));
 function unpack(zip, dest) {
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$ErrorActionPreference="Stop"; Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::ExtractToDirectory($env:RESCUE_ZIP,$env:RESCUE_DEST)'],
     { env: { ...psEnv, RESCUE_ZIP: zip, RESCUE_DEST: dest } });
 }
-const skill = process.env.AGENT_COACH_TEST_RELEASE ? path.join(tmp, '安装包') : (process.env.COACH_PRODUCT || repo);
-if (process.env.AGENT_COACH_TEST_RELEASE && process.platform === 'win32') unpack(path.join(release, zipName), skill);
+const skill = process.env.COACH_PRODUCT || (process.env.AGENT_COACH_TEST_RELEASE ? path.join(tmp,'安装包') : repo);
+if (process.env.AGENT_COACH_TEST_RELEASE && !process.env.COACH_PRODUCT && process.platform==='win32') unpack(path.join(release,zipName),skill);
 const checker = path.join(skill, '工具/coach-check.mjs');
 function put(dir, rel, bytes) {
   const file = path.join(dir, rel);
@@ -216,32 +224,20 @@ test('D · 精确忽略瞬态文件，保留业务同后缀输入、首票必需
   clues(dir, '大量线索');
 });
 
-test('F1 · v1.21 材料底账忽略瞬态文件，核对锁同名目录中的业务样本', windows, t => {
-  const dir = path.join(tmp, 'v1.21 材料项目');
-  const oldZip = process.env.AGENT_COACH_TEST_V121_ZIP;
-  let script = checker;
-  if (oldZip) {
-    const oldSkill = path.join(tmp, 'v1.21 原包');
-    unpack(oldZip, oldSkill);
-    script = path.join(oldSkill, '工具/coach-check.mjs');
-  }
+function historicalMaterials(dir, script) {
   report(dir, 'init', undefined, '通过', script);
   const sample = 'materials\\run-flow.delivery-lock.json\\样本.csv';
   const samples = [['materials\\.DS_Store', 'legacy metadata'], [sample, '金额\n12\n']];
   for (const [rel, bytes] of samples) put(dir, rel, bytes);
-  if (oldZip) {
-    report(dir, 'files', '1', '通过', script);
-    assert.match(report(dir, 'files', '1', '通过', script), /✓ materials 基线里的 2 份文件都没变/);
-    t.diagnostic('v1.21 原包 files 1：✓ materials 基线里的 2 份文件都没变');
-  } else {
-    const digest = hashes(dir, samples.map(([rel]) => rel));
-    put(dir, base, [
-      'materials 基线｜2026-11-18｜第 1 站 files 第一次通过时写，以后只比对｜文件｜字节｜SHA-256',
-      ...samples.map(([rel, bytes]) => rel + '｜' + Buffer.byteLength(bytes) + '｜' + digest[rel]),
-      '',
-    ].join('\n'));
-    t.diagnostic('同格式 v1.21 材料底账夹具');
-  }
+  return sample;
+}
+
+const v121Baseline=path.join(repo,'tests/fixtures/v121-materials.txt');
+test('F1 · v1.21 材料底账忽略瞬态文件，核对锁同名目录中的业务样本', windows, () => {
+  const dir=path.join(tmp,'v1.21 材料项目'), oldSkill=path.join(tmp,'仓内 v2.0.0');
+  unpack(path.join(repo,'releases/v2.0.0/agent-coach-v2.0.0-20261120.zip'),oldSkill);
+  const sample=historicalMaterials(dir,path.join(oldSkill,'工具/coach-check.mjs'));
+  put(dir,base,fs.readFileSync(v121Baseline));
   const baseline = path.join(dir, base), original = fs.readFileSync(baseline);
   assert.match(original.toString('utf8'), /^materials\\\.DS_Store｜\d+｜[0-9a-f]{64}$/m);
   assert.match(report(dir, 'files', '1', '通过'), /✓ materials 基线里的 1 份文件都没变/);
@@ -255,6 +251,25 @@ test('F1 · v1.21 材料底账忽略瞬态文件，核对锁同名目录中的�
   assert.ok(clues(dir, 'v1.21 材料已删除').includes('[基线:差异] ' + sample + '（已删除）'));
   assert.deepEqual(fs.readFileSync(baseline), original);
 });
+
+if (process.env.AGENT_COACH_TEST_V121_ZIP || process.env.AGENT_COACH_DIAG_EVIDENCE) {
+  test('本机历史实物 · v1.21 原包签发的底账和旧票逐字复核',windows,()=>{
+    const zip=process.env.AGENT_COACH_TEST_V121_ZIP;
+    assert.ok(zip && fs.existsSync(zip),'缺 AGENT_COACH_TEST_V121_ZIP 原件');
+    assert.equal(sha(fs.readFileSync(zip)),'f85a911ca8a587c49f20114483c64999313be8432da4f61dff8bc50dfa3bd11c');
+    const dir=path.join(tmp,'历史底账实算'), script=oldTicketChecker();
+    historicalMaterials(dir,script);
+    report(dir,'files','1','通过',script);
+    assert.match(report(dir,'files','1','通过',script),/✓ materials 基线里的 2 份文件都没变/);
+    // The first line carries the creation date. The actual file rows are immutable.
+    assert.deepEqual(read(dir,base).split(/\r?\n/).slice(1),fs.readFileSync(v121Baseline,'utf8').split(/\r?\n/).slice(1));
+    assert.match(report(dir,'files','1','通过'),/✓ materials 基线里的 1 份文件都没变/);
+    const [,draft,expected]=oldExamples[0], project=oldProject('历史签发样本');
+    put(project,ticketPath('02'),draft);
+    report(project,'ticket','02','通过',script);
+    assert.equal(read(project,fingerprint('02')),expected+'\n');
+  });
+}
 
 for (const linked of [idx, 'docs']) {
   test('F2 · 票据预检与快跑验收拒绝外联 ' + linked + '，各只报一次', windows, () => {
@@ -495,9 +510,13 @@ test('F4 · 附件目录仅有锁同名目录联接时判空拒绝，补入真�
   fs.mkdirSync(attachDir, { recursive: true });
   fs.mkdirSync(emptyTarget, { recursive: true });
   fs.symlinkSync(emptyTarget, path.join(attachDir, 'run-flow.delivery-lock.json'), 'junction');
-  ticket(dir, n, { quote: '' });
+  const writeAttachTicket = opts => {
+    ticket(dir,n,opts);
+    put(dir,rel,read(dir,rel).replace('放到哪：'+output(n),'放到哪：'+output(n)+'、work\\01-附件\\'));
+  };
+  writeAttachTicket({quote:''});
   report(dir, 'ticket', n, '通过');
-  ticket(dir, n);
+  writeAttachTicket();
   assert.match(report(dir, 'accept', n, '不通过'), /✗ 放到哪 work\\01-附件\\ 是空文件夹或不是文件夹/);
   put(dir, 'work/01-附件/明细.csv', '编号\n1\n');
   assert.match(report(dir, 'accept', n, '通过'), /✓ 放到哪 work\\01-附件\\ 在/);
@@ -514,17 +533,17 @@ test('T2 · 仅确认日期无效时，有真值来源和预检指纹的单票�
   assert.match(report(dir, 'accept', n, '不通过'), /确认记录须写日期和真实原话/);
 });
 
-test('E · 三段式初始化、版本阈值与发布入口一致，两个 autocrlf 克隆各重建 25 个成员', windows, t => {
-  const title = '# Agent 搭建教练 v2.0.0 (2026-11-20)';
+test('E · 三段式初始化、版本阈值与发布入口一致，两个 autocrlf 克隆各重建 27 个成员', windows, t => {
+  const title = '# Agent 搭建教练 v2.1.0 (2026-11-25)';
   assert.equal(read(skill, 'AGENTS.md').split(/\r?\n/)[0], title);
-  for (const [p,line] of [['AGENTS.md',7],['做法/1-建项目.md',4]]) assert.ok(read(skill,p).split(/\r?\n/)[line-1].includes('v2.0.0 (2026-11-20)'));
+  for (const [p,line] of [['AGENTS.md',7],['做法/1-建项目.md',4]]) assert.ok(read(skill,p).split(/\r?\n/)[line-1].includes('v2.1.0 (2026-11-25)'));
   const overview = read(skill, '讲解/五站总览.html');
-  for (const tag of ['title','h1']) assert.ok(overview.includes(`<${tag}>Agent 搭建教练 v2.0.0：五站总览</${tag}>`));
+  for (const tag of ['title','h1']) assert.ok(overview.includes(`<${tag}>Agent 搭建教练 v2.1.0：五站总览</${tag}>`));
   const checkBox = overview.split('<g id="check">')[1].split('</g>')[0];
   for (const word of ['项目建好了','任务单确认','拆解确认','流程就这样','就这样跑','按快跑档推进','票 N 通过','采用','停止','修复全部硬伤','按建议修好并接着做']) assert.ok(checkBox.includes(word), word);
   const dir = path.join(tmp, '新建');
   report(dir, 'init', undefined, '通过');
-  assert.match(read(dir, idx), /^搭建教练版本：v2\.0\.0$/m);
+  assert.match(read(dir, idx), /^搭建教练版本：v2\.1\.0$/m);
   const fake = path.join(tmp, '坏包');
   put(fake, '工具/coach-check.mjs', fs.readFileSync(checker));
   put(fake, 'AGENTS.md', '# Agent 搭建教练 v2.0 (2026-11-20)');
@@ -551,7 +570,14 @@ test('E · 三段式初始化、版本阈值与发布入口一致，两个 autoc
   const installed = path.join(tmp, '候选原包');
   unpack(path.join(release, zipName), installed);
   const names = files(installed);
-  assert.equal(names.length, 25);
+  assert.deepEqual(names,[
+    'AGENTS.md','CLAUDE.md','LICENSE.md','README.md','SKILL.md','做法/0-体检.md','做法/0-修复复诊.md',
+    '做法/1-建项目.md','做法/2-SOP-拆开SOP.md','做法/2-新做-说清需求.md','做法/3-排表画图.md','做法/4-一步一票.md',
+    '做法/5-收尾交接.md','做法/业务网页-ELI5.md','做法/共用.md','做法/架构推荐表.md','工具/coach-check.mjs',
+    '工具/eli5-report.mjs','模板/AGENTS.模板.md','模板/CLAUDE.模板.md','模板/README.模板.md',
+    '模板/docs/INTAKE-SOP.模板.md','模板/docs/INTAKE-新做.模板.md','模板/docs/PROJECT_INDEX.模板.md',
+    '模板/docs/run-flow.模板.md','模板/docs/票.模板.md','讲解/五站总览.html',
+  ].map(name=>name.replaceAll('/','\\')).sort());
   const head = execFileSync('git', ['-C',repo,'rev-parse','HEAD'], { encoding:'utf8' }).trim();
   const clean = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-dual-'));
   try {
@@ -561,7 +587,7 @@ test('E · 三段式初始化、版本阈值与发布入口一致，两个 autoc
       assert.equal(execFileSync('git',['-C',clone,'rev-parse','HEAD'],{ encoding:'utf8' }).trim(), head);
       execFileSync('powershell.exe', ['-NoProfile','-NonInteractive','-File',path.join(clone,'工具/pack-release.ps1')],{ cwd:clone, env:psEnv });
       const extracted = path.join(clean, '解包-' + autocrlf);
-      unpack(path.join(clone,'releases/v2.0.0',zipName), extracted);
+      unpack(path.join(clone,'releases/v2.1.0',zipName), extracted);
       assert.deepEqual(files(extracted), names);
       for (const name of names) assert.ok(fs.readFileSync(path.join(installed,name)).equals(fs.readFileSync(path.join(extracted,name))), name);
       if (autocrlf === 'false') {
@@ -571,7 +597,7 @@ test('E · 三段式初始化、版本阈值与发布入口一致，两个 autoc
         const nextDir = path.join(clone, 'releases/v12.10.3'), next = 'agent-coach-v12.10.3-20310204.zip';
         assert.equal(read(nextDir, 'SHA256SUMS.txt'), hashes(nextDir, [next])[next] + '  ' + next + '\n');
       }
-      t.diagnostic(`autocrlf=${autocrlf} HEAD=${head} 成员集合相同，解压字节 25/25 完全相等`);
+      t.diagnostic(`autocrlf=${autocrlf} HEAD=${head} 成员集合相同，解压字节 27/27 完全相等`);
     }
   } finally { fs.rmSync(clean, { recursive:true, force:true }); }
   assert.equal(fs.existsSync(clean), false);
@@ -1257,21 +1283,24 @@ test('13.57.13 上轮 35 份偏差原文逐份核对注释和自动链接坐标'
 });
 
 let v121Checker;
-function signWithV121(t, dir, draft, expected) {
-  const rel = ticketPath('02'), stamp = fingerprint('02');
-  put(dir, rel, draft);
+function oldTicketChecker() {
+  if (!v121Checker) {
+    const oldSkill=path.join(tmp,'签发用 v1.21 原包');
+    unpack(process.env.AGENT_COACH_TEST_V121_ZIP,oldSkill);
+    v121Checker=path.join(oldSkill,'工具/coach-check.mjs');
+  }
+  return v121Checker;
+}
+function signWithV121(t,dir,draft,expected) {
+  const rel=ticketPath('02'), stamp=fingerprint('02');
+  put(dir,rel,draft);
+  assert.equal(fs.existsSync(path.join(dir,stamp)),false);
   if (process.env.AGENT_COACH_TEST_V121_ZIP) {
-    if (!v121Checker) {
-      const oldSkill = path.join(tmp, '签发用 v1.21 原包');
-      unpack(process.env.AGENT_COACH_TEST_V121_ZIP, oldSkill);
-      v121Checker = path.join(oldSkill, '工具/coach-check.mjs');
-      t.diagnostic('旧指纹由 v1.21 原包 ticket 签发');
-    }
-    assert.equal(fs.existsSync(path.join(dir, stamp)), false);
-    report(dir, 'ticket', '02', '通过', v121Checker);
+    report(dir,'ticket','02','通过',oldTicketChecker());
+    t.diagnostic('旧指纹由 v1.21 原包 ticket 签发');
   } else {
-    put(dir, stamp, expected);
-    t.diagnostic('缺原包环境变量，使用旧指纹金样');
+    put(dir,stamp,expected);
+    t.diagnostic('用已归档的 v1.21 格式指纹检验当前读者');
   }
   assert.equal(read(dir, stamp), expected);
   assert.match(expected, /^[a-f0-9]{64}\n$/);
@@ -1551,7 +1580,7 @@ function liveScan(dir, name) {
   const initial = hashes(dir);
   const result = report(target, 'scan', dir);
   assert.deepEqual(hashes(dir), initial);
-  assert.deepEqual(files(target), ['docs\\check\\scan.txt']);
+  assert.deepEqual(files(target), ['docs\\check\\scan-map.html','docs\\check\\scan.txt','docs\\check\\snapshot.json']);
   return result;
 }
 function liveProject(name, { week = '', wide = false, title = '价格日报小练习' } = {}) {
@@ -1805,33 +1834,24 @@ function archifyMarkup(source) {
 }
 
 test('13.58 旧 Archify 图照原结构核对，刷新保留原页与交付旁件', windows, t => {
-  const from = process.env.AGENT_COACH_TEST_ARCHIFY_DOCS;
+  const from=path.join(repo,'tests/fixtures/archify');
   const { dir } = liveProject('真实旧图');
   const sidecar = 'docs/run-flow.delivery.json';
-  if (from) {
-    for (const rel of [liveHtml, liveTable, liveSource, sidecar]) {
-      put(dir, rel, fs.readFileSync(path.join(from, rel.slice(5))));
-    }
-    const sample = fileState(dir)[0];
-    assert.deepEqual([sample.length, sha(sample)], [759913, '12d3189d76bc6157348bc27b8d331b15aa2e4731c57f3c81d069a3429e3ad01f']);
-  } else {
-    liveFlow(dir);
-    const source = JSON.parse(read(dir, liveSource));
-    put(dir, liveHtml, archifyMarkup(source));
-    put(dir, sidecar, '{}\n');
+  for (const rel of [liveHtml, liveTable, liveSource, sidecar]) {
+    put(dir, rel, fs.readFileSync(path.join(from, rel.slice(5))));
   }
   const kept = [fileState(dir), fileState(dir, sidecar)];
   const originalSource = read(dir, liveSource);
   for (const flag of [undefined, '--refresh']) assert.match(liveFlow(dir, flag), /图和图源一致：\d+ 框、\d+ 线/);
   const scan = liveScan(dir, '真旧图');
   assert.match(scan, /图源与运行表一致：3 步/);
-  if (from) assert.match(scan, /图和图源一致：7 框、12 线/);
+  assert.match(scan, /图和图源一致：7 框、12 线/);
   assert.deepEqual([fileState(dir), fileState(dir, sidecar)], kept);
   const html = kept[0][0].toString('utf8');
   put(dir, liveHtml, html.replace(/(<g\b[^>]*\bid="node-[^"]*"[^>]*>)/, '$1$1'));
   assert.match(report(dir, 'flow', '--refresh', '不通过'), /图和图源不一致/);
   assert.equal(read(dir, liveSource), originalSource);
-  t.diagnostic(from ? '已直接运行 759913 字节真实旧页' : '已运行四道 Archify 结构对照');
+  t.diagnostic('已经核对仓内独立留存的真实三步旧图结构');
 
   const { dir: legacy } = liveProject('三道旧图');
   liveFlow(legacy);
@@ -2173,7 +2193,7 @@ test('13.58.1 本批核验按完整数值和词匹配，旧的含断言照常通
   });
 });
 
-test('13.58.1 主产物首行参数重复冲突与顺序无关，旧含断言照常通过', windows, t => {
+test('13.59 主产物同名冲突时验收和地图都拒绝，旧含断言仍实跑', windows, t => {
   const p = liveProject('参数双向冲突', { week:'W45' }), { dir } = p;
   const take = liveTicket(p, '01', { periodic: true });
   liveRun(p, take);
@@ -2186,11 +2206,15 @@ test('13.58.1 主产物首行参数重复冲突与顺序无关，旧含断言照
     ['旧值在后', '参数｜报告周：W45｜报告周：W44', false],
   ], (head, shouldSign) => {
     put(dir, take.target, normal.replace(/^[^\n]+/, head));
-    const body = report(dir, 'accept', '01', '通过');
-    liveFlow(dir, '--refresh');
-    const s = liveRead(dir).steps[0];
-    assert.deepEqual([!!liveReceipt(body),s[2],s[3]], shouldSign
-      ? [true,'verified','本批已实跑核过'] : [false,'blocked','本批待核：主产物同名参数冲突'], body);
+    const body = report(dir,'accept','01',shouldSign?'通过':'不通过');
+    liveFlow(dir,'--refresh');
+    const s=liveRead(dir).steps[0];
+    assert.deepEqual([!!liveReceipt(body),s[2]],shouldSign?[true,'verified']:[false,'blocked'],body);
+    if (!shouldSign) {
+      assert.match(body,/主产物同名参数重复或冲突/);
+      assert.match(s[3],/主产物同名参数重复或冲突/);
+      assert.match(body,/✓ .*含 有效行：4/);
+    }
   });
 });
 
@@ -2623,9 +2647,10 @@ function checkReviewDecisions(t, projectName, cases) {
   });
 }
 
-// 普通 CI 只需 Node。发布机指定已有 Playwright 后，同一套解包夹具再跑真浏览器。
-if (process.env.AGENT_COACH_TEST_PLAYWRIGHT) test('13.58.2 离线双主题实图可走、可切样本、可退回、可复制', windows, async t => {
-  const { chromium } = await import(pathToFileURL(process.env.AGENT_COACH_TEST_PLAYWRIGHT).href);
+test('13.58.2 离线双主题实图可走、可切样本、可退回、可复制', windows, async t => {
+  const browserPath = requireFixture(t,'AGENT_COACH_TEST_PLAYWRIGHT');
+  if (!browserPath) return;
+  const { chromium } = await import(pathToFileURL(browserPath).href);
   const browser = await chromium.launch({ executablePath:chromium.executablePath(),headless:true });
   const evidence = process.env.AGENT_COACH_TEST_MAP_EVIDENCE;
   try {

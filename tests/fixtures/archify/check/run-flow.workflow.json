@@ -1,0 +1,229 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "有色金属周报：谁做、从哪拿、放到哪、你在哪判断",
+    "locale": "zh-CN",
+    "animation": "none",
+    "quality_profile": "standard",
+    "output": "run-flow.html",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "security": {
+          "label": "你判断"
+        },
+        "external": {
+          "label": "你放入"
+        },
+        "cloud": {
+          "label": "AI看情况"
+        },
+        "backend": {
+          "label": "程序（AI照规矩）"
+        },
+        "database": {
+          "label": "文件"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "you",
+      "label": "你"
+    },
+    {
+      "id": "ai",
+      "label": "AI（看情况）"
+    },
+    {
+      "id": "prog",
+      "label": "程序（AI照规矩）"
+    },
+    {
+      "id": "files",
+      "label": "文件"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p0",
+      "label": "开始：放输入",
+      "fromCol": 0,
+      "toCol": 0
+    },
+    {
+      "id": "p1",
+      "label": "第1步 认出输入",
+      "fromCol": 1,
+      "toCol": 1
+    },
+    {
+      "id": "p2",
+      "label": "第2步 算铜均价环比",
+      "fromCol": 2,
+      "toCol": 2
+    },
+    {
+      "id": "p3",
+      "label": "第3步 对数",
+      "fromCol": 3,
+      "toCol": 3,
+      "variant": "emphasis"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "you0",
+      "lane": "you",
+      "col": 0,
+      "type": "external",
+      "label": "放入或补换输入",
+      "sublabel": "照输入清单；补齐不代批准",
+      "width": 300
+    },
+    {
+      "id": "f0",
+      "lane": "files",
+      "col": 0,
+      "type": "database",
+      "label": "materials\\（每次放）",
+      "sublabel": "输入 1｜输入 2",
+      "width": 300
+    },
+    {
+      "id": "a1",
+      "lane": "prog",
+      "col": 1,
+      "type": "backend",
+      "label": "认出输入",
+      "sublabel": "先读规则：日报读取.md",
+      "width": 300
+    },
+    {
+      "id": "f1",
+      "lane": "files",
+      "col": 1,
+      "type": "database",
+      "label": "work\\01-认出结果.md",
+      "width": 300
+    },
+    {
+      "id": "a2",
+      "lane": "prog",
+      "col": 2,
+      "type": "backend",
+      "label": "算铜均价环比",
+      "width": 300
+    },
+    {
+      "id": "f2",
+      "lane": "files",
+      "col": 2,
+      "type": "database",
+      "label": "work\\02-铜均价环比.md",
+      "width": 300
+    },
+    {
+      "id": "you3",
+      "lane": "you",
+      "col": 3,
+      "type": "security",
+      "label": "你核第 3 步：看铜周均价、环比两个数",
+      "sublabel": "条件、动作见退回箭头",
+      "tag": "你判断",
+      "width": 300
+    }
+  ],
+  "edges": [
+    {
+      "id": "r0-put",
+      "from": "you0",
+      "to": "f0",
+      "label": "放入",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r1-in",
+      "from": "f0",
+      "to": "a1",
+      "label": "读",
+      "variant": "dashed"
+    },
+    {
+      "id": "r1-out",
+      "from": "a1",
+      "to": "f1",
+      "label": "写",
+      "variant": "dashed"
+    },
+    {
+      "id": "r2-in",
+      "from": "f1",
+      "to": "a2",
+      "label": "读",
+      "variant": "dashed"
+    },
+    {
+      "id": "r2-in2",
+      "from": "f0",
+      "to": "a2",
+      "label": "读",
+      "variant": "dashed"
+    },
+    {
+      "id": "r2-out",
+      "from": "a2",
+      "to": "f2",
+      "label": "写",
+      "variant": "dashed"
+    },
+    {
+      "id": "r3-in",
+      "from": "a2",
+      "to": "you3",
+      "label": "交你看",
+      "variant": "emphasis"
+    },
+    {
+      "id": "r3-back2",
+      "from": "you3",
+      "to": "a2",
+      "label": "不对退回第 2 步",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "r3-back1",
+      "from": "you3",
+      "to": "a1",
+      "label": "查到是样例录错的，把改好的文件换进 materials\\，说\"样例换了\"，退回第 1 步",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "input-invalid",
+      "from": "a1",
+      "to": "you0",
+      "label": "输入不合格，停下问你补换",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "input-retry",
+      "from": "you0",
+      "to": "a1",
+      "label": "补换后核原确认，有效才重新识别",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "r1-next",
+      "from": "a1",
+      "to": "a2",
+      "label": "下一步",
+      "variant": "emphasis"
+    }
+  ]
+}
