@@ -23,10 +23,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Syntax check coach-check.mjs
-        shell: pwsh
-        run: node --check "工具/coach-check.mjs"
-
       - name: Verify the committed release checksum
         shell: pwsh
         run: |
@@ -42,7 +38,29 @@ jobs:
           if ($expected -ne $actual) {
             throw "SHA256 mismatch: expected $expected, got $actual"
           }
+          $install = Join-Path $env:RUNNER_TEMP 'agent-coach-installed'
+          Expand-Archive -LiteralPath "$dir/$zip" -DestinationPath $install
+          "COACH_PRODUCT=$install" >> $env:GITHUB_ENV
+
+      - name: Syntax check both installed tools
+        shell: pwsh
+        run: |
+          node --check (Join-Path $env:COACH_PRODUCT '工具/coach-check.mjs')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check (Join-Path $env:COACH_PRODUCT '工具/eli5-report.mjs')
+
+      - name: Install Playwright and Chromium for the Windows gate
+        shell: pwsh
+        run: |
+          $gate = Join-Path $env:RUNNER_TEMP 'pw-gate'
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $gate 'browsers'
+          npm.cmd install --prefix $gate --no-save --no-package-lock playwright@1.62.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node (Join-Path $gate 'node_modules/playwright/cli.js') install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "AGENT_COACH_TEST_PLAYWRIGHT=$(Join-Path $gate 'node_modules/playwright/index.mjs')" >> $env:GITHUB_ENV
+          "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH" >> $env:GITHUB_ENV
 
       - name: Run all suites against the committed package
         shell: pwsh
-        run: node --test --test-concurrency=1 tests/fast-accept.test.mjs tests/hybrid-v118.test.mjs tests/governance-v120.test.mjs tests/fingerprint-v121.test.mjs tests/rescue-v200.test.mjs
+        run: node --test --test-concurrency=1 tests/fast-accept.test.mjs tests/hybrid-v118.test.mjs tests/governance-v120.test.mjs tests/fingerprint-v121.test.mjs tests/rescue-v200.test.mjs tests/diagnostics-v210.test.mjs

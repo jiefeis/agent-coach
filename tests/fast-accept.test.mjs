@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const checker = fileURLToPath(new URL('../工具/coach-check.mjs', import.meta.url));
+const checker = path.join(process.env.COACH_PRODUCT || fileURLToPath(new URL('../',import.meta.url)),'工具/coach-check.mjs');
 
 test('快跑单口令仅接受当前批次中没有人工停点的纯脚本票', { skip: process.platform !== 'win32' }, (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-fast-'));

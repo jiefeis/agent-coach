@@ -1,0 +1,25 @@
+<!doctype html><html lang="zh-CN"><title>三步旧图样本</title><svg>
+<path data-edge-id="input-invalid" data-edge-from="a1" data-edge-to="you0" data-edge-label="输入不合格，停下问你补换" class="a-dashed"></path>
+<path data-edge-id="input-retry" data-edge-from="you0" data-edge-to="a1" data-edge-label="补换后核原确认，有效才重新识别" class="a-dashed"></path>
+<path data-edge-id="r0-put" data-edge-from="you0" data-edge-to="f0" data-edge-label="放入" class="a-emphasis"></path>
+<path data-edge-id="r1-in" data-edge-from="f0" data-edge-to="a1" data-edge-label="读" class="a-dashed"></path>
+<path data-edge-id="r1-next" data-edge-from="a1" data-edge-to="a2" data-edge-label="下一步" class="a-emphasis"></path>
+<path data-edge-id="r1-out" data-edge-from="a1" data-edge-to="f1" data-edge-label="写" class="a-dashed"></path>
+<path data-edge-id="r2-in" data-edge-from="f1" data-edge-to="a2" data-edge-label="读" class="a-dashed"></path>
+<path data-edge-id="r2-in2" data-edge-from="f0" data-edge-to="a2" data-edge-label="读" class="a-dashed"></path>
+<path data-edge-id="r2-out" data-edge-from="a2" data-edge-to="f2" data-edge-label="写" class="a-dashed"></path>
+<path data-edge-id="r3-back1" data-edge-from="you3" data-edge-to="a1" data-edge-label="查到是样例录错的，把改好的文件换进 materials\，说&quot;样例换了&quot;，退回第 1 步" class="a-dashed"></path>
+<path data-edge-id="r3-back2" data-edge-from="you3" data-edge-to="a2" data-edge-label="不对退回第 2 步" class="a-dashed"></path>
+<path data-edge-id="r3-in" data-edge-from="a2" data-edge-to="you3" data-edge-label="交你看" class="a-emphasis"></path>
+<g id="node-you0" data-node-id="you0" data-node-label="放入或补换输入" data-node-sublabel="照输入清单；补齐不代批准" data-node-kind="external" data-node-context="你 › 开始：放输入"></g>
+<g id="node-you3" data-node-id="you3" data-node-label="你核第 3 步：看铜周均价、环比两个数" data-node-sublabel="条件、动作见退回箭头" data-node-kind="security" data-node-context="你 › 第3步 对数"></g>
+<g id="node-a1" data-node-id="a1" data-node-label="认出输入" data-node-sublabel="先读规则：日报读取.md" data-node-kind="backend" data-node-context="程序（AI照规矩） › 第1步 认出输入"></g>
+<g id="node-a2" data-node-id="a2" data-node-label="算铜均价环比" data-node-kind="backend" data-node-context="程序（AI照规矩） › 第2步 算铜均价环比"></g>
+<g id="node-f0" data-node-id="f0" data-node-label="materials\（每次放）" data-node-sublabel="输入 1｜输入 2" data-node-kind="database" data-node-context="文件 › 开始：放输入"></g>
+<g id="node-f1" data-node-id="f1" data-node-label="work\01-认出结果.md" data-node-kind="database" data-node-context="文件 › 第1步 认出输入"></g>
+<g id="node-f2" data-node-id="f2" data-node-label="work\02-铜均价环比.md" data-node-kind="database" data-node-context="文件 › 第2步 算铜均价环比"></g>
+<g data-legend-kind="backend" data-legend-label="程序（AI照规矩）"></g>
+<g data-legend-kind="security" data-legend-label="你判断"></g>
+<g data-legend-kind="database" data-legend-label="文件"></g>
+<g data-legend-kind="external" data-legend-label="你放入"></g>
+</svg></html>

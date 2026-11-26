@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="coach-generator" content="eli5-report/1"><meta name="coach-batch" content="参数｜报告日：2026-11-25"><title>旧页</title><style>
+@layer offline {
+  :root{color-scheme:light dark;--foreground:#142d32;--muted-foreground:#496267;--card:#f9fcf9;--secondary:#e6efea;--border:#c5d9d1;--primary:#075a50;--primary-foreground:#fff;--accent-surface:#edf6ee;--success:#116246;--warning:#805412;--destructive:#a92f23;--radius:10px;--font-sans:system-ui,"Microsoft YaHei",sans-serif}
+  @media(prefers-color-scheme:dark){:root{--foreground:#e5f4ef;--muted-foreground:#b0c9c5;--card:#1b2826;--secondary:#263e39;--border:#45665f;--primary:#89e1ce;--primary-foreground:#10342e;--accent-surface:#182e2b;--success:#9ce3b6;--warning:#ffd895;--destructive:#ffad9a}}
+}
+*{box-sizing:border-box}
+body{margin:0;color:var(--foreground);font:1rem/1.55 var(--font-sans);overflow-wrap:anywhere}
+main{width:min(100%,860px);margin-inline:auto}
+header,nav,.detail,details,.feedback{margin-inline:.65rem}
+header{margin-block:.65rem}h1,h2,p{margin:0}h1{font-size:1.48rem;line-height:1.3}h2{font-size:1.06rem}
+.when,.conclusion,[data-visible-count]{font-size:.89rem;color:var(--muted-foreground)}
+.conclusion{font-weight:600}
+nav{display:flex;gap:.38rem;align-items:center;flex-wrap:wrap;margin-block:.45rem}
+button,select,textarea{font:inherit;color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+button{padding:.32rem .62rem;cursor:pointer}
+button[aria-pressed=true],.copy{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+svg{display:block;width:100%;height:auto;font-family:var(--font-sans)}
+.narrow{display:none}.paper{fill:var(--accent-surface)}.dot{fill:var(--border)}
+.node{color:var(--muted-foreground)}
+.good{color:var(--success)}.bad{color:var(--destructive)}.hold{color:var(--warning)}
+.box{stroke:var(--border);fill:var(--card);stroke-width:2}
+.node.active .box,.node:focus-visible .box{stroke:currentColor;stroke-width:3.2}
+.node:not(.active) .box{fill:var(--accent-surface)}
+svg text{text-anchor:middle;fill:var(--foreground);pointer-events:none}
+svg [role=button]{cursor:pointer}
+.label{font-size:19px;font-weight:720}
+.number{fill:currentColor;font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}
+.edge{stroke:var(--border);stroke-width:2.2;fill:none}.edge.active{stroke:currentColor;stroke-width:4}
+.edge-key{font-size:12px;fill:var(--muted-foreground);paint-order:stroke;stroke:var(--accent-surface);stroke-width:5px;stroke-linejoin:round}
+.detail{padding-block:.48rem;font-size:.9rem}
+.controls{display:flex;align-items:center;gap:.40rem;flex-wrap:wrap}
+select{max-width:100%;min-width:0;padding:.22rem .35rem}
+.sequence{margin:.33rem 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem}
+.sequence div{min-width:0;border-top:2px solid var(--border);padding-top:.25rem}
+dt{font-weight:700}dd{margin:0;color:var(--muted-foreground);white-space:pre-wrap}
+details{border-block-start:1px solid var(--border);padding:.28rem 0;font-size:.88rem}
+summary{cursor:pointer;font-weight:650}
+details dl,details ul{margin:.35rem 0}details ul{padding-inline-start:1.2rem}
+li{margin-block:.18rem}
+.feedback{padding-bottom:.5rem;font-size:.87rem}
+textarea{width:100%;max-width:100%;min-block-size:5rem;padding:.4rem}
+[hidden]{display:none!important}
+@media(max-width:510px){.wide{display:none}.narrow{display:block}.label{font-size:16px}}
+</style></head><body><main><header><p class="when">2026-11-25 · 项目组</p><h1>旧页</h1><p class="conclusion">等待核对</p></header><nav aria-label="筛选本批条目"><button type="button" data-filter="all" aria-pressed="true">全部</button><button type="button" data-filter="正常" aria-pressed="false">正常</button><button type="button" data-filter="异常" aria-pressed="false">异常</button><button type="button" data-filter="待核" aria-pressed="false">待核</button><span data-visible-count aria-live="polite"></span></nav><div data-visual><svg class="wide" viewBox="0 0 728 452" aria-label="当批输入经规则判断流向正常、异常和待核"><defs><pattern id="paper-w" width="19" height="19" patternUnits="userSpaceOnUse"><circle class="dot" cx="1" cy="1" r=".8"/></pattern><marker id="arrow-w" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path fill="context-stroke" d="M0 0L8 4L0 8Z"/></marker></defs><rect class="paper" width="728" height="452"/><rect fill="url(#paper-w)" width="728" height="452"/><g data-node="all" class="node active " transform="translate(105 217)"><rect class="box" x="-70" y="-47" width="140" height="94" rx="14"/><text class="label" y="-6">当批输入</text><text class="number" y="22">0</text></g><g data-node="gate" class="node active " transform="translate(337 217)"><path class="box" d="M-47 -46H47l18 18v56l-18 18H-47l-18 -18v-56z"/><text class="label" y="7">规则判断</text></g><g data-node="正常" class="node active good" transform="translate(612 107)" role="button" tabindex="0" aria-label="筛选正常"><rect class="box" x="-66" y="-41" width="132" height="82" rx="14"/><text class="label" y="-6">正常交付</text><text class="number" y="22">0</text></g><g data-node="异常" class="node active bad" transform="translate(612 217)" role="button" tabindex="0" aria-label="筛选异常"><rect class="box" x="-66" y="-41" width="132" height="82" rx="14"/><text class="label" y="-6">异常退回</text><text class="number" y="22">0</text></g><g data-node="待核" class="node active hold" transform="translate(612 327)" role="button" tabindex="0" aria-label="筛选待核"><rect class="box" x="-66" y="-41" width="132" height="82" rx="14"/><text class="label" y="-6">待补证据</text><text class="number" y="22">0</text></g></svg><svg class="narrow" viewBox="0 0 390 474" aria-label="当批输入经规则判断流向正常、异常和待核"><defs><pattern id="paper-n" width="19" height="19" patternUnits="userSpaceOnUse"><circle class="dot" cx="1" cy="1" r=".8"/></pattern><marker id="arrow-n" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path fill="context-stroke" d="M0 0L8 4L0 8Z"/></marker></defs><rect class="paper" width="390" height="474"/><rect fill="url(#paper-n)" width="390" height="474"/><g data-node="all" class="node active " transform="translate(195 65)"><rect class="box" x="-85.5" y="-31" width="171" height="62" rx="14"/><text class="label" y="-6">当批输入</text><text class="number" y="22">0</text></g><g data-node="gate" class="node active " transform="translate(195 194)"><path class="box" d="M-71 -35H71l18 18v34l-18 18H-71l-18 -18v-34z"/><text class="label" y="7">规则判断</text></g><g data-node="正常" class="node active good" transform="translate(68 371)" role="button" tabindex="0" aria-label="筛选正常"><rect class="box" x="-55" y="-37" width="110" height="74" rx="14"/><text class="label" y="-6">正常交付</text><text class="number" y="22">0</text></g><g data-node="异常" class="node active bad" transform="translate(195 371)" role="button" tabindex="0" aria-label="筛选异常"><rect class="box" x="-55" y="-37" width="110" height="74" rx="14"/><text class="label" y="-6">异常退回</text><text class="number" y="22">0</text></g><g data-node="待核" class="node active hold" transform="translate(322 371)" role="button" tabindex="0" aria-label="筛选待核"><rect class="box" x="-55" y="-37" width="110" height="74" rx="14"/><text class="label" y="-6">待补证据</text><text class="number" y="22">0</text></g></svg></div><div class="detail"><p data-empty>本批没有逐项记录</p><div class="controls" data-pick><label for="item">查看一条</label><select id="item"></select></div><section data-item-panel><h2 id="item-title"></h2><dl class="sequence"><div><dt>进门</dt><dd data-item-field="input"></dd></div><div><dt>判断与依据</dt><dd data-item-field="rule"></dd><dd data-item-field="basis"></dd></div><div><dt>去向／异常</dt><dd data-item-field="action"></dd><dd data-item-field="exception"></dd></div></dl></section></div><details><summary>本批统计</summary><p>本批无登记。</p></details><details><summary>证据与出处</summary><p>本批无登记。</p></details><details><summary>术语</summary><p>本批无登记。</p></details><details><summary>待拍板事项</summary><ul><li><strong>是否交付？</strong><p>先核对</p><button type="button" class="copy" data-copy="0">复制给 AI</button></li></ul></details><div class="feedback"><p role="status" data-copy-status></p><textarea readonly hidden aria-label="复制用指令"></textarea></div></main><script id="eli5-data" type="application/json">{"batch":{"报告日":"2026-11-25"},"date":"2026-11-25","title":"旧页","audience":"项目组","conclusion":"等待核对","stats":[],"items":[],"decisions":[{"question":"是否交付？","proposal":"先核对"}],"evidence":[],"terms":[]}</script><script>const validFact=fact => typeof fact==='string' && !!fact.trim() && !/^待核(?:[：:]|$)/.test(fact.trim());
+function effectiveState(item) {
+  if (item.state==='待核' || ![item.input,item.rule,item.basis].every(validFact)) return '待核';
+  return validFact(item.state==='正常'?item.action:item.exception) ? item.state : '待核';
+}
+
+const data=JSON.parse(document.querySelector('#eli5-data').textContent);
+const statuses=data.items.map(effectiveState);
+const count=document.querySelector('[data-visible-count]');
+const select=document.querySelector('#item');
+const field=document.querySelector('textarea');
+const status=document.querySelector('[data-copy-status]');
+let filter='all', current=0;
+function choose() {
+  const section=document.querySelector('[data-item-panel]'), title=section.querySelector('#item-title');
+  const fields=section.querySelectorAll('[data-item-field]');
+  if (select.value==='') {
+    current=-1;
+    section.hidden=true;
+    title.textContent='';
+    for (const field of fields) field.textContent='';
+    return;
+  }
+  current=Number(select.value);
+  const x=data.items[current];
+  section.hidden=false;
+  title.textContent=x.label+' · '+statuses[current];
+  for (const field of fields) {
+    const value=x[field.dataset.itemField];
+    field.textContent=validFact(value) ? value : '待核';
+  }
+}
+function show() {
+  const rows=data.items.flatMap((x,i)=>filter==='all'||statuses[i]===filter?[i]:[]);
+  for(const b of document.querySelectorAll('[data-filter]')) b.setAttribute('aria-pressed',String(b.dataset.filter===filter));
+  count.textContent='可见 '+rows.length+' / 全批 '+data.items.length+' 条';
+  document.querySelector('[data-empty]').hidden=!!rows.length;
+  document.querySelector('[data-empty]').textContent=data.items.length?'这一类没有记录。':'本批没有逐项记录';
+  document.querySelector('[data-pick]').hidden=!rows.length;
+  for(const node of document.querySelectorAll('[data-node]')) {
+    const key=node.dataset.node;
+    const active=filter==='all'||['all','gate',filter].includes(key);
+    node.classList.toggle('active',active);
+    if(node.hasAttribute('role')) node.setAttribute('aria-pressed',String(key===filter));
+  }
+  for(const edge of document.querySelectorAll('[data-edge]'))
+    edge.classList.toggle('active',filter==='all'||['gate',filter].includes(edge.dataset.branch));
+  select.replaceChildren(...rows.map(i=>new Option(data.items[i].label,i)));
+  select.value=String(rows.includes(current)?current:rows[0] ?? '');
+  choose();
+}
+select.addEventListener('change',choose);
+const filterTo=state=>{filter=state;show();};
+document.querySelector('[data-visual]').addEventListener('click',e=>{
+  const target=e.target.closest('[role="button"][data-node]');if(target)filterTo(target.dataset.node);
+});
+document.querySelector('[data-visual]').addEventListener('keydown',e=>{
+  const target=e.target.closest('[role="button"][data-node]');
+  if(target&&(e.key==='Enter'||e.key===' ')){e.preventDefault();filterTo(target.dataset.node);}
+});
+document.addEventListener('click',async e=>{
+  const button=e.target.closest('button');if(!button)return;
+  if(button.dataset.filter)filterTo(button.dataset.filter);
+  if(button.dataset.copy===undefined)return;
+  const decision=data.decisions[Number(button.dataset.copy)];
+  const one=s=>String(s ?? '待核').replace(/[\p{Cc}\p{Cf}\u2028\u2029]+/gu,' ').trim();
+  const batch=document.querySelector('meta[name="coach-batch"]').content;
+  const instruction='请按「'+one(data.title)+'」的批次「'+batch+'」和我核对「'+one(decision.question)+'」。建议：'+one(decision.proposal)+'。请列依据和影响，等我确认再执行。';
+  try{await navigator.clipboard.writeText(instruction);field.hidden=true;status.textContent='已复制';}
+  catch{field.value=instruction;field.hidden=false;field.focus();field.select();status.textContent='已全选，请复制';}
+});
+show();
+</script></body></html>

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "fefe9e1b-bdc9-4751-8095-8ec482f52c5e",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "check/run-flow.workflow.json",
+  "output": "run-flow.html",
+  "specification": {
+    "sha256": "2d9f02cba496863500bd6115f4d72935c0837997231957cc8ede2274a8ae8f94",
+    "bytes": 4577
+  },
+  "artifact": {
+    "sha256": "1a55e06d4480c622b265d7221821a8e3e13bdafc34468ad8a05bb328197364f2",
+    "bytes": 3331
+  }
+}

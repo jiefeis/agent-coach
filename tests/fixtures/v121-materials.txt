@@ -1,0 +1,3 @@
+materials 基线｜2026-11-25｜第 1 站 files 第一次通过时写，以后只比对｜文件｜字节｜SHA-256
+materials\.DS_Store｜15｜293566845ccea6b90dc234e7beb77b61a2d24f22bc20b4c9229b260d7e7dcad6
+materials\run-flow.delivery-lock.json\样本.csv｜10｜899a05d8308c72b1bb4d290cb2dbb693294a4318e8e7d455d37155fe2dbb961c

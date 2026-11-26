@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const checker = fileURLToPath(new URL('../工具/coach-check.mjs', import.meta.url));
+const checker = path.join(process.env.COACH_PRODUCT || fileURLToPath(new URL('../',import.meta.url)),'工具/coach-check.mjs');
 const windows = { skip: process.platform !== 'win32' };
 const heading = '## 验收单（第 1 版）';
 const sheet = [heading, '- 预期值来源：样例清点确认：样例有 12 行', '### AI 自检',

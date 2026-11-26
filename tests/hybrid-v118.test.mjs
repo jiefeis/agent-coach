@@ -8,7 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const checker = path.join(repo, '工具', 'coach-check.mjs');
+const checker = path.join(process.env.COACH_PRODUCT || repo, '工具', 'coach-check.mjs');
 const windows = { skip: process.platform !== 'win32' };
 const ticketPath = (n) => `docs/tickets/${n}-样例.md`;
 const output = (n) => `work\\${n}-结果.txt`;
@@ -153,6 +153,8 @@ test('Case 4 · W44 基线与 W45 当期守恒，最新轮次留证', windows, (
   makeTicket(dir,'02',{ checks,results });
   produced(dir,'02');
   check(dir,'ticket','02',true);
+  const table=fs.readFileSync(path.join(dir,'docs/run-flow.md'),'utf8');
+  put(dir,'docs/run-flow.md',table.replaceAll('W44','W45'));
   for (const first of ['参数｜报告周：W45','报告周：W45']) {
     put(dir,output('02'),first+'\n净额：135\n守恒核对：通过');
     check(dir,'accept','02',true);
@@ -166,6 +168,7 @@ test('Case 4 · W44 基线与 W45 当期守恒，最新轮次留证', windows, (
   }
   put(dir,output('02'),'参数｜报告周：W45\n净额：135\n守恒核对：失败');
   check(dir,'accept','02',false,/守恒核对/);
+  put(dir,'docs/run-flow.md',table);
   produced(dir,'02');
   check(dir,'accept','02',true);
 });
@@ -222,13 +225,12 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
   const psEnv = { ...process.env };
   for (const key of Object.keys(psEnv)) if (key.toUpperCase() === 'PSMODULEPATH') delete psEnv[key];
   invoke('powershell.exe',['-NoProfile','-NonInteractive','-File',path.join(build,'工具','pack-release.ps1')],{ cwd:root, env:psEnv });
-  const releaseName = 'agent-coach-v2.0.0-20261120.zip';
-  const rebuilt = path.join(build, 'releases', 'v2.0.0');
+  const releaseName = 'agent-coach-v2.1.0-20261125.zip';
+  const rebuilt = path.join(build, 'releases', 'v2.1.0');
   const releaseDirs = process.env.AGENT_COACH_TEST_RELEASE
     ? [rebuilt, process.env.AGENT_COACH_TEST_RELEASE]
     : [rebuilt];
   for (const [index, releaseDir] of releaseDirs.entries()) {
-    const isRebuilt = index === 0;
     const dest = index === releaseDirs.length - 1 ? skill : path.join(root, 'rebuilt');
     const zip = path.join(releaseDir, releaseName);
     const digest = createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
@@ -240,13 +242,18 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
     const files = fs.readdirSync(dest, { recursive: true })
       .filter((rel) => fs.statSync(path.join(dest, rel)).isFile())
       .map((rel) => rel.split(path.sep).join('/')).sort();
-    assert.deepEqual(files, [...expectedMembers.keys()].sort());
+    assert.deepEqual(files, [
+    'AGENTS.md','CLAUDE.md','LICENSE.md','README.md','SKILL.md','做法/0-体检.md','做法/0-修复复诊.md',
+    '做法/1-建项目.md','做法/2-SOP-拆开SOP.md','做法/2-新做-说清需求.md','做法/3-排表画图.md','做法/4-一步一票.md',
+    '做法/5-收尾交接.md','做法/业务网页-ELI5.md','做法/共用.md','做法/架构推荐表.md','工具/coach-check.mjs',
+    '工具/eli5-report.mjs','模板/AGENTS.模板.md','模板/CLAUDE.模板.md','模板/README.模板.md',
+    '模板/docs/INTAKE-SOP.模板.md','模板/docs/INTAKE-新做.模板.md','模板/docs/PROJECT_INDEX.模板.md',
+    '模板/docs/run-flow.模板.md','模板/docs/票.模板.md','讲解/五站总览.html',
+  ].sort());
+    assert.deepEqual(files,[...expectedMembers.keys()].sort());
     for (const [name, expected] of expectedMembers) {
       const actual = fs.readFileSync(path.join(dest, name));
-      // A checkout can normalize LF/CRLF. The local packer must otherwise copy runtime bytes exactly.
-      if (isRebuilt && name !== 'README.md') assert.deepEqual(actual, expected, name);
-      else assert.equal(actual.toString('utf8').replaceAll('\r\n', '\n'),
-        expected.toString('utf8').replaceAll('\r\n', '\n'), name);
+      assert.deepEqual(actual,expected,name);
     }
   }
   const tool = path.join(skill, '工具', 'coach-check.mjs');
@@ -273,7 +280,7 @@ test('Case 6 · 从安装包实际解压，贯穿五站并校验哈希', windows
     "const csv = fs.readFileSync(path.join(input, '周报-W44.csv'), 'utf8');",
     "const target = process.argv[2] ? path.join(input, '结果.txt') : path.join(root, 'work/01-结果.txt');",
     "fs.mkdirSync(path.dirname(target), { recursive: true });",
-    "fs.writeFileSync(target, csv.split(/\\r?\\n/)[0] === '金额' ? '认出输入：W44' : '已拦截：缺金额列');",
+    "fs.writeFileSync(target, csv.split(/\\r?\\n/)[0] === '金额' ? '参数｜报告周：W44\\n认出输入：W44' : '已拦截：缺金额列');",
   ].join('\n'));
   const script = path.join(dir, 'scripts/01_样例.js');
   const invalid = path.join(dir, 'work/01-坏输入');

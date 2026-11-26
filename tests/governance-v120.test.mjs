@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const root = process.cwd();
+const repo = fileURLToPath(new URL('../',import.meta.url));
+const root = process.env.COACH_PRODUCT || repo;
 const coachCheck = path.join(root, '工具', 'coach-check.mjs');
 const windows = { skip: process.platform !== 'win32' };
 const ALLOWED_LIST_NOTES = new Set(['至少一份文件', '可有可无', '表头写了"不画图"时可有可无']);
@@ -13,15 +16,17 @@ test('v1.20 跨文件静态契约：版本号、五站总览口令、完成清�
   const agents = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   const overview = fs.readFileSync(path.join(root, '讲解', '五站总览.html'), 'utf8');
-  const packScript = fs.readFileSync(path.join(root, '工具', 'pack-release.ps1'), 'utf8');
+  const packScript = fs.readFileSync(path.join(repo, '工具', 'pack-release.ps1'), 'utf8');
   const check0 = fs.readFileSync(path.join(root, '做法', '0-体检.md'), 'utf8');
   const repair0 = fs.readFileSync(path.join(root, '做法', '0-修复复诊.md'), 'utf8');
 
-  assert.match(agents.split(/\r?\n/)[0], /v2\.0\.0/);
-  assert.match(readme, /当前版本：\*\*v2\.0\.0\*\*/);
-  assert.match(readme, /releases\/v2\.0\.0\/agent-coach-v2\.0\.0-20261120\.zip/);
+  assert.match(agents.split(/\r?\n/)[0], /v2\.1\.0/);
+  assert.match(readme, /当前版本：\*\*v2\.1\.0\*\*/);
+  assert.match(readme, /releases\/v2\.1\.0\/agent-coach-v2\.1\.0-20261125\.zip/);
   assert.match(readme, /仅定稿尾票.*接班后须说 `就这样跑`/);
-  assert.match(overview, /Agent 搭建教练 v2\.0\.0：五站总览/);
+  assert.match(overview, /Agent 搭建教练 v2\.1\.0：五站总览/);
+  assert.ok(fs.existsSync(path.join(root,'工具/eli5-report.mjs')));
+  assert.ok(fs.existsSync(path.join(root,'做法/业务网页-ELI5.md')));
   assert.match(packScript, /\$OutDir = Join-Path \$RepoRoot "releases\\\$Version"/);
 
   // 确保五站总览图已清除旧版废弃口令并对齐现行口令（含体检批量修复口令）
@@ -87,7 +92,7 @@ function write(dir, rel, value) {
 }
 
 function project(t) {
-  const base = fs.mkdtempSync(path.join(root, '..', 'temp-v120-gov-'));
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'temp-v120-gov-'));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const proj = path.join(base, 'target-proj');
   runCheck(proj, 'init', null, '通过');
@@ -157,7 +162,7 @@ test('v1.20 清洗票需要独立真值，只点收其产物不升级成计算�
       '- 预期值来源：'+source,'### AI 自检','- 有 '+out].join('\n'));
     runCheck(proj,'ticket',n,verdict,detail);
     fs.appendFileSync(path.join(proj,ticket),'\n## 确认记录\n- 第 1 次确认（第 1 版）：2026-11-12｜就这样跑','utf8');
-    write(proj,out,'120\n');
+    write(proj,out,'参数｜周次：W44\n120\n');
     runCheck(proj,'accept',n,verdict,detail);
   }
   checkWith('02','样例清点确认：首行有金额', '不通过');
@@ -175,7 +180,7 @@ test('v1.20 使用做法中的快跑批次；换期结果占位模板不能代�
   write(proj,'docs/tickets/01-认出输入.md',['# 票 01：认出输入','## 这一步','怎么做：写程序（scripts\\01_认出输入.js）',
     '## 验收单（第 1 版）','- 预期值来源：样例清点确认：识别 1 份','### AI 自检','- 有 '+recognition,
     '- work\\01-坏输入\\结果.txt 含 已拦截','## 确认记录','- 第 1 次确认（第 1 版）：2026-11-12｜按快跑档推进'].join('\n'));
-  write(proj,recognition,'1 份输入');
+  write(proj,recognition,'参数｜周次：W44\n1 份输入');
   write(proj,'scripts/01_认出输入.js','// Fixture');
   write(proj,'work/01-坏输入/结果.txt','已拦截');
   runCheck(proj,'accept','01','通过');
@@ -184,7 +189,8 @@ test('v1.20 使用做法中的快跑批次；换期结果占位模板不能代�
     '### AI 自检','#### 固定基线断言（绑定参数：W44）','- '+cleaned+' 含 120','#### 当期守恒断言（每次必核）',
     '- '+cleaned+' 含 当期核对通过','- work\\02-坏输入\\结果.txt 含 已拦截','## 确认记录',
     '- 第 1 次确认（第 1 版）：2026-11-12｜就这样跑','## 结果','### 第 1 轮｜按第 1 次确认（第 1 版）的验收单'].join('\n');
-  write(proj,cleaned,'参数｜报告周：W45\n135\n当期核对通过');
+  write(proj,'docs/run-flow.md',runFlow(6).replaceAll('W44','W45'));
+  write(proj,cleaned,'参数｜周次：W45\n135\n当期核对通过');
   write(proj,'work/02-坏输入/结果.txt','已拦截');
   const ticketPath = 'docs/tickets/02-清洗数据.md';
   const placeholder = doc('模板/docs/票.模板.md').match(/^.*写明.*固定基线.*$/m)?.[0];
@@ -213,7 +219,9 @@ test('v1.20 外置初诊和复诊分别生成，目标项目不变', windows, (t
     const dir = path.join(bundle,round);
     const report = runCheck(dir,'scan',proj,'通过',/## 架构/);
     assert.match(report,/## 完成度/);
-    assert.deepEqual(fs.readdirSync(path.join(dir,'docs/check')),['scan.txt']);
+    const expected = ['scan.txt','snapshot.json'];
+    if (fs.existsSync(path.join(proj,'docs/run-flow.md'))) expected.unshift('scan-map.html');
+    assert.deepEqual(fs.readdirSync(path.join(dir,'docs/check')).sort(),expected.sort());
   }
   assert.deepEqual(projectFiles(),before);
 });
