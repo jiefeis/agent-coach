@@ -1492,6 +1492,8 @@ function play(step) {
 }
 async function copy(text) {
  const card = cards[current-1], feedback = card.querySelector('.copy-status'), field = card.querySelector('textarea'), job = ++copyJob;
+ feedback.textContent = '';
+ field.hidden = true;
  try {
    await navigator.clipboard.writeText(text);
    if (job === copyJob) { field.hidden = true; feedback.textContent = '已复制'; }
@@ -1546,8 +1548,8 @@ main.addEventListener('keydown',event => {
 for (const svg of main.querySelectorAll('.scene')) svg.classList.add('has-pick');
 select(focusStep);
 `;
-function renderLiveMap(meta, previous = false) {
-  const script = previous ? PRIOR_MAP_JS : MAP_JS, style = previous ? PRIOR_MAP_STYLE : MAP_STYLE;
+function renderLiveMap(meta, previous = false, script = previous ? PRIOR_MAP_JS : MAP_JS) {
+  const style = previous ? PRIOR_MAP_STYLE : MAP_STYLE;
   const CSP = createHash('sha256').update(script).digest('base64');
   const stopped = meta.steps.some(s => s[3].includes('项目已停止'));
   const raw = islandJson(meta), count = meta.steps.length, verified = meta.steps.filter(s => s[2] === 'verified').length;
@@ -1637,7 +1639,14 @@ function readProjectMap(root) {
         if (sums.length !== 1 || head < 0 || sums[0].index < head + 6 || sums[0].index >= html.indexOf('</head>',head) ||
             sums[0][0] !== mapShaTag(raw)) throw new Error('活地图数据岛与页头校验不一致');
         const meta = JSON.parse(raw);
-        if (!liveShape(meta) || (!Buffer.from(renderLiveMap(meta)).equals(bytes) && !Buffer.from(renderLiveMap(meta,true)).equals(bytes))) throw new Error('活地图整页复算不一致');
+        const matches=(previous,script)=>Buffer.from(renderLiveMap(meta,previous,script)).equals(bytes);
+        if (!liveShape(meta)) throw new Error('活地图整页复算不一致');
+        if (!matches(false) && !matches(true)) {
+          // 公开 v2.0.0 和修复前候选使用相同脚本；正文、按钮、CSP 和数据仍须逐字重算。
+          const script=html.slice(html.lastIndexOf('<script>')+8,html.lastIndexOf('</script>'));
+          if (digest(script)!=='4c2e1cc5384f71db896362c2a55d9816ba2e0abeb34660fc61e70a6e2a4615d8' ||
+              !matches(false,script)) throw new Error('活地图整页复算不一致');
+        }
         return { kind:'live', meta, bytes, st:file.st };
       }
       const pic = arch ? picFromHtml(html) : null;
@@ -5328,6 +5337,12 @@ const counter=document.querySelector('[data-visible-count]');
 const canvas=document.querySelector('[data-visual]');
 const field=document.querySelector('textarea');
 const status=document.querySelector('[data-copy-status]');
+let copyJob=0;
+function resetCopy() {
+  status.textContent='';
+  field.hidden=true;
+  return ++copyJob;
+}
 const isIssue=s=>s.state==='red'||s.state==='yellow';
 let mode='normal', selected=Number(document.querySelector('[data-panel]:not([hidden])')?.dataset.panel);
 function show() {
@@ -5353,7 +5368,7 @@ function show() {
   }
   for (const section of document.querySelectorAll('[data-panel]')) section.hidden=Number(section.dataset.panel)!==selected;
   document.querySelector('[data-empty]').hidden=visible.length>0;
-  status.textContent='';field.hidden=true;
+  resetCopy();
 }
 function choose(node) {
   if (node.dataset.node===undefined || Number(node.dataset.node)<0) return;
@@ -5377,8 +5392,14 @@ document.addEventListener('click',async e=>{
   }
   if(b.dataset.copy===undefined)return;
   const text=data.find(x=>x.id===Number(b.dataset.copy)).command;
-  try {await navigator.clipboard.writeText(text);field.hidden=true;status.textContent='已复制';}
-  catch {field.value=text;field.hidden=false;field.focus();field.select();status.textContent='已全选，请复制';}
+  const job=resetCopy();
+  try {
+    await navigator.clipboard.writeText(text);
+    if(job===copyJob) status.textContent='已复制';
+  } catch {
+    if(job!==copyJob) return;
+    field.value=text;field.hidden=false;field.focus();field.select();status.textContent='已全选，请复制';
+  }
 });
 show();
 `;

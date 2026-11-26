@@ -2748,3 +2748,68 @@ test('13.58.2 离线双主题实图可走、可切样本、可退回、可复制
     }
   } finally { await browser.close(); }
 });
+
+test('连续复制相反指令时，当前写入完成前撤下上一条反馈', windows, async t => {
+  const browserPath = requireFixture(t,'AGENT_COACH_TEST_PLAYWRIGHT');
+  if (!browserPath) return;
+  const p = liveProject('连续复制',{week:'W45'});
+  for (const n of ['01','02']) {
+    const ticket = liveTicket(p,n,{periodic:true,sameSource:n === '02'});
+    liveRun(p,ticket);
+    liveAccept(p.dir,ticket.n);
+  }
+  liveFlow(p.dir);
+  const { chromium } = await import(pathToFileURL(browserPath).href);
+  const browser = await chromium.launch({executablePath:chromium.executablePath(),headless:true});
+  try {
+    for (const granted of [true,false]) await t.test(granted ? '写入成功' : '写入被拒', async () => {
+      const page = await browser.newPage();
+      try {
+        await page.goto(pathToFileURL(path.join(p.dir,liveHtml)).href);
+        await page.evaluate(allowed => {
+          Object.defineProperty(navigator,'clipboard',{value:{
+            writeText: text => new Promise((resolve,reject) => {
+              window.finishCopy = () => {
+                if (!allowed) return reject(new Error('denied'));
+                window.copied = text;
+                resolve();
+              };
+            })
+          }});
+        },granted);
+        const card = page.locator('.card:visible');
+        const buttons = card.locator('[data-copy]'), status = card.locator('.copy-status'), field = card.locator('textarea');
+        const commands = await buttons.evaluateAll(nodes => nodes.map(node => node.dataset.copy));
+        assert.deepEqual(commands,['票 2 通过，我核对通过，可以交付。','票 2 不通过：<写明哪一项不对>']);
+        for (const [i,expected] of commands.entries()) {
+          await buttons.nth(i).click();
+          assert.deepEqual([await status.textContent(),await field.isHidden()],['',true]);
+          await page.evaluate(() => window.finishCopy());
+          await card.getByText(granted ? '已复制' : '请按 Ctrl+C',{exact:true}).waitFor();
+          if (granted) assert.equal(await page.evaluate(() => window.copied),expected);
+          else assert.deepEqual(await field.evaluate(f => [f.readOnly,f.value,f.selectionStart,f.selectionEnd]),[true,expected,0,expected.length]);
+        }
+      } finally { await page.close(); }
+    });
+  } finally { await browser.close(); }
+});
+
+test('公开 v2.0 项目活地图只在显式刷新时升级，旧页篡改仍拦截', windows, () => {
+  const {dir}=liveProject('公开旧页');
+  const old=path.join(tmp,'公开v200');
+  unpack(path.join(repo,'releases/v2.0.0/agent-coach-v2.0.0-20261120.zip'),old);
+  report(dir,'flow',undefined,'通过',path.join(old,'工具/coach-check.mjs'));
+  const original=read(dir,liveHtml);
+  assert.match(report(dir,'flow',undefined,'不通过'),/地图已过期/);
+  assert.equal(read(dir,liveHtml),original);
+  assert.match(liveFlow(dir,'--refresh'),/刷新项目活地图/);
+  assert.notEqual(read(dir,liveHtml),original);
+  assert.match(liveFlow(dir),/项目活地图与现有文件一致/);
+  for (const [before,after] of [['width=device-width','width=Device-width'],['feedback.textContent','feedback.otherText']]) {
+    const altered=original.replace(before,after);
+    assert.notEqual(altered,original);
+    put(dir,liveHtml,altered);
+    assert.match(report(dir,'flow','--refresh','不通过'),/整页复算不一致/);
+    assert.equal(read(dir,liveHtml),altered);
+  }
+});

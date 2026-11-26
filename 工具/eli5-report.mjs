@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 
 const MAX_JSON = 1024 * 1024;
 const MAX_HTML = 16 * MAX_JSON;
@@ -196,8 +197,15 @@ const count=document.querySelector('[data-visible-count]');
 const select=document.querySelector('#item');
 const field=document.querySelector('textarea');
 const status=document.querySelector('[data-copy-status]');
+let copyJob=0;
+function resetCopy() {
+  status.textContent='';
+  field.hidden=true;
+  return ++copyJob;
+}
 let filter='all', current=0;
 function choose() {
+  resetCopy();
   const section=document.querySelector('[data-item-panel]'), title=section.querySelector('#item-title');
   const fields=section.querySelectorAll('[data-item-field]');
   if (select.value==='') {
@@ -252,8 +260,14 @@ document.addEventListener('click',async e=>{
   const one=s=>String(s ?? '待核').replace(/[\\p{Cc}\\p{Cf}\\u2028\\u2029]+/gu,' ').trim();
   const batch=document.querySelector('meta[name="coach-batch"]').content;
   const instruction='请按「'+one(data.title)+'」的批次「'+batch+'」和我核对「'+one(decision.question)+'」。建议：'+one(decision.proposal)+'。请列依据和影响，等我确认再执行。';
-  try{await navigator.clipboard.writeText(instruction);field.hidden=true;status.textContent='已复制';}
-  catch{field.value=instruction;field.hidden=false;field.focus();field.select();status.textContent='已全选，请复制';}
+  const job=resetCopy();
+  try {
+    await navigator.clipboard.writeText(instruction);
+    if(job===copyJob) status.textContent='已复制';
+  } catch {
+    if(job!==copyJob) return;
+    field.value=instruction;field.hidden=false;field.focus();field.select();status.textContent='已全选，请复制';
+  }
 });
 show();
 `;
@@ -261,7 +275,7 @@ show();
 function listDetails(title,items,render) {
   return '<details><summary>'+title+'</summary>'+(items.length?'<ul>'+items.map(render).join('')+'</ul>':'<p>本批无登记。</p>')+'</details>';
 }
-function render(data) {
+function render(data, script='const validFact='+validFact.toString()+';\n'+effectiveState.toString()+'\n'+SCRIPT) {
   const counts={all:data.items.length,正常:0,异常:0,待核:0};
   for (const item of data.items) counts[effectiveState(item)]++;
   const controls=[['all','全部'],...STATES.map(s=>[s,s])].map(([key,label])=>
@@ -284,7 +298,7 @@ function render(data) {
     listDetails('待拍板事项',data.decisions,(x,i)=>'<li><strong>'+esc(x.question)+'</strong><p>'+esc(pending(x.proposal))+
       '</p><button type="button" class="copy" data-copy="'+i+'">复制给 AI</button></li>')+
     '<div class="feedback"><p role="status" data-copy-status></p><textarea readonly hidden aria-label="复制用指令"></textarea></div></main>'+
-    DATA_TAG+jsonIsland(data)+'</script><script>const validFact='+validFact.toString()+';\n'+effectiveState.toString()+'\n'+SCRIPT+'</script></body></html>\n';
+    DATA_TAG+jsonIsland(data)+'</script><script>'+script+'</script></body></html>\n';
 }
 
 // A bounded head tokenizer reads metadata as data. Raw text and template bodies cannot declare it.
@@ -627,7 +641,12 @@ function checkPage(raw) {
   const at=html.indexOf(DATA_TAG), end=html.indexOf('</script>',at+DATA_TAG.length);
   if (at<0 || end<0) refuse('没有完整的业务数据');
   const data=normalize(parseJson(html.slice(at+DATA_TAG.length,end)));
-  if (!Buffer.from(render(data)).equals(raw)) refuse('批次、图、按钮或数据与原生成页不同');
+  if (!Buffer.from(render(data)).equals(raw)) {
+    // 冻结候选的业务页仅脚本不同，仍用原数据逐字复算整页。
+    const script=html.slice(html.lastIndexOf('<script>')+8,html.lastIndexOf('</script>'));
+    if (createHash('sha256').update(script).digest('hex')!=='4695e2505cea2ef76407bc1773ebdef5427f6fad7d04e657689445c4b35dc94b' ||
+        !Buffer.from(render(data,script)).equals(raw)) refuse('批次、图、按钮或数据与原生成页不同');
+  }
   return true;
 }
 

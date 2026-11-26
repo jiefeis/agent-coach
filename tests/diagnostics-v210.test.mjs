@@ -20,7 +20,7 @@ function requireFixture(t, name) {
   '正式验收必须设置 '+name);
   t.skip('未设置 '+name);
 }
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'coach-diag-'));
+const temp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'coach-diag-')));
 after(() => fs.rmSync(temp, { recursive: true, force: true }));
 const runTable = 'docs/run-flow.md', index = 'docs/PROJECT_INDEX.md', projectMap = 'docs/run-flow.html';
 const sourceMap = 'docs/check/run-flow.workflow.json', sidecar = 'docs/run-flow.delivery.json';
@@ -996,6 +996,28 @@ test('T15 双页离线四档真实互动、复制和截图',windows,async t => {
             // Chromium converts LF to CRLF when writing the native Windows clipboard.
             assert.equal(clipboard.replace(/\r\n/g,'\n'),expected);
           }
+          if (width===728) {
+            await page.evaluate(() => {
+              window.pendingCopies=[];
+              Object.defineProperty(navigator.clipboard,'writeText',{value:() => new Promise((resolve,reject) => {
+                window.pendingCopies.push(ok => ok ? resolve() : reject(new Error('denied')));
+              })});
+            });
+            const feedback=async()=>[await page.locator('[data-copy-status]').textContent(),await page.locator('textarea').isHidden()];
+            const finish=(index,ok)=>page.evaluate(([i,success])=>window.pendingCopies[i](success),[index,ok]);
+            await button.click();
+            assert.deepEqual(await feedback(),['',true]);
+            await button.click();
+            await finish(1,granted);
+            const latest=granted?['已复制',true]:['已全选，请复制',false];
+            assert.deepEqual(await feedback(),latest);
+            await finish(0,!granted);
+            assert.deepEqual(await feedback(),latest);
+            await button.click();
+            await page.locator('[data-filter]').first().click();
+            await finish(2,granted);
+            assert.deepEqual(await feedback(),['',true]);
+          }
           assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),before.width);
           assert.deepEqual(remote,[]); assert.deepEqual(errors,[]);
           entries.push({kind,width,theme,before,after,geometry,screenshots:[sha(initial),sha(changed),sha(covered)],svg:[sha(initialSvg),sha(changedSvg)],remote,errors,clipboard:granted?'成功':'拒绝时选中'});
@@ -1654,5 +1676,21 @@ test('R2-09 文件名逐段核真实拼写，缺件、联接和硬链接都不�
     put(dir,index,base.replace('## 已确认',delivery+'已读回｜docs\\check\\'+name+'\n## 已确认'));
     const report=stationFive(dir);
     assert.ok(report.includes(why),report);
+  }
+});
+
+test('冻结候选业务网页能原地核验，脚本或正文被改仍拒绝',windows,()=>{
+  const dir=fresh('复制修复前业务页'), name='日报.html';
+  const original=read(repo,'tests/fixtures/eli5-before-copy.html');
+  put(dir,name,original);
+  const verified=verifyPage(dir);
+  assert.equal(verified.status,0,verified.stdout+verified.stderr);
+  assert.equal(read(dir,name),original);
+  for (const [before,after] of [['width=device-width','width=Device-width'],['field.focus()','field.blur()']]) {
+    const altered=original.replace(before,after);
+    assert.notEqual(altered,original);
+    put(dir,name,altered);
+    assert.notEqual(verifyPage(dir).status,0);
+    assert.equal(read(dir,name),altered);
   }
 });
